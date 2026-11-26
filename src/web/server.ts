@@ -6,6 +6,8 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 import { FlowManager } from '../flow-manager.js';
+import { EditService } from '../edit/service.js';
+import { editHandlers } from './edit-api.js';
 import {
   handleCreateFlow,
   handleListFlows,
@@ -33,6 +35,7 @@ const PUBLIC_DIR = resolve(__dirname, '../../public');
 
 // Initialize FlowManager (loads existing flows from disk)
 const fm = new FlowManager();
+const edit = editHandlers(new EditService(fm));
 
 // Router
 async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -57,6 +60,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       const flowId = segments[2];
       const action = segments[3];
       const sub = segments[4];
+      const sub2 = segments[5];
 
       // POST /api/flows — create flow
       if (!flowId && method === 'POST') {
@@ -110,6 +114,23 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
           if (method === 'POST') return await handleFlowPhotoUpload(fm)(req, res, flowId, charId);
           if (method === 'DELETE') return await handleFlowPhotoDelete(fm)(req, res, flowId, charId);
           if (method === 'GET') return handleFlowPhotoGet(fm)(req, res, flowId, charId);
+        }
+
+        // /api/flows/:id/edit/... — bước Dựng video
+        if (action === 'edit') {
+          if (!sub) {
+            if (method === 'GET') return await edit.get(req, res, flowId);
+            if (method === 'PUT') return await edit.put(req, res, flowId);
+          } else if (sub === 'music') {
+            if (method === 'POST') return await edit.music(req, res, flowId);
+            if (method === 'GET') return await edit.musicGet(req, res, flowId);
+          } else if (sub === 'lut' && method === 'POST') return await edit.lut(req, res, flowId);
+          else if (sub === 'lyrics' && method === 'POST') return await edit.lyrics(req, res, flowId);
+          else if (sub === 'render') {
+            if (!sub2 && method === 'POST') return await edit.render(req, res, flowId);
+            if (!sub2 && method === 'GET') return await edit.renderStatus(req, res, flowId);
+            if (sub2 === 'cancel' && method === 'POST') return await edit.cancel(req, res, flowId);
+          } else if (sub === 'final' && sub2 && method === 'GET') return await edit.final(req, res, flowId, sub2);
         }
 
         // POST /api/flows/:id/start
@@ -187,6 +208,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         html: 'text/html; charset=utf-8',
         css: 'text/css',
         js: 'application/javascript',
+        cjs: 'application/javascript',
+        mjs: 'application/javascript',
         png: 'image/png',
         svg: 'image/svg+xml',
         ico: 'image/x-icon',

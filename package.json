@@ -11,7 +11,9 @@
     "serve": "tsx src/web/server.ts",
     "test:upload-mock": "tsx scripts/test-upload-mock.ts",
     "inspect:upload": "tsx scripts/inspect-upload.ts",
-    "test:upload": "tsx scripts/test-upload.ts"
+    "test:upload": "tsx scripts/test-upload.ts",
+    "test:edit": "tsx scripts/test-edit.ts",
+    "test:edit-api": "tsx scripts/test-edit-api.ts"
   },
   "dependencies": {
     "archiver": "^7.0.1",

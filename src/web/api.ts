@@ -1,6 +1,7 @@
 import { type IncomingMessage, type ServerResponse } from 'http';
 import { readdirSync, statSync, createReadStream, existsSync } from 'fs';
-import { join, extname } from 'path';
+import { join, extname, basename } from 'path';
+import { serveFile } from './serve-file.js';
 import ExcelJS from 'exceljs';
 import archiver from 'archiver';
 import { getFlowPaths } from '../config.js';
@@ -10,7 +11,7 @@ import { MAX_PHOTO_BYTES, PhotoError } from '../flow-photos.js';
 
 // ─── Helpers ─────────────────────────────────────────────────
 
-function json(res: ServerResponse, data: unknown, status = 200): void {
+export function json(res: ServerResponse, data: unknown, status = 200): void {
   res.writeHead(status, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(data));
 }
@@ -85,7 +86,7 @@ export function handleCloneFlow(fm: FlowManager) {
 // ─── Character photos (ảnh cô dâu / chú rể) ─────────────────
 
 /** Đọc body nhưng dừng ngay khi vượt giới hạn, tránh nuốt RAM bởi tệp quá lớn. */
-function collectLimited(req: IncomingMessage, limit: number): Promise<Buffer | 'too-large'> {
+export function collectLimited(req: IncomingMessage, limit: number): Promise<Buffer | 'too-large'> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
@@ -278,31 +279,12 @@ export function handleFlowOutputList(fm: FlowManager) {
 }
 
 export function handleFlowOutputFile(fm: FlowManager) {
-  return (_req: IncomingMessage, res: ServerResponse, flowId: string, filename: string) => {
+  return (req: IncomingMessage, res: ServerResponse, flowId: string, filename: string) => {
     const meta = fm.getFlowMeta(flowId);
     if (!meta) { res.writeHead(404); res.end('Flow not found'); return; }
-
-    const paths = getFlowPaths(flowId);
-    const filePath = join(paths.outputDir, filename);
-    try {
-      const stat = statSync(filePath);
-      const ext = extname(filename).toLowerCase();
-      const mimeTypes: Record<string, string> = {
-        '.png': 'image/png',
-        '.jpg': 'image/jpeg',
-        '.jpeg': 'image/jpeg',
-        '.mp4': 'video/mp4',
-        '.webm': 'video/webm',
-      };
-      res.writeHead(200, {
-        'Content-Type': mimeTypes[ext] || 'application/octet-stream',
-        'Content-Length': stat.size,
-      });
-      createReadStream(filePath).pipe(res);
-    } catch {
-      res.writeHead(404);
-      res.end('File not found');
-    }
+    if (filename !== basename(filename) || filename.startsWith('.')) { res.writeHead(400); res.end('Bad name'); return; }
+    const mimeTypes: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.mp4': 'video/mp4', '.webm': 'video/webm' };
+    serveFile(req, res, join(getFlowPaths(flowId).outputDir, filename), mimeTypes[extname(filename).toLowerCase()] || 'application/octet-stream');
   };
 }
 

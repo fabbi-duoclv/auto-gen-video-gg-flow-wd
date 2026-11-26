@@ -1,0 +1,28 @@
+import { createReadStream, statSync } from 'fs';
+import type { IncomingMessage, ServerResponse } from 'http';
+import { basename } from 'path';
+
+/** Phục vụ tệp có hỗ trợ Range (cần cho <video>/<audio> tua được trong trình duyệt). */
+export function serveFile(req: IncomingMessage, res: ServerResponse, path: string, mime: string, downloadName?: string): void {
+  let size: number;
+  try { size = statSync(path).size; } catch { res.writeHead(404); res.end('File not found'); return; }
+  const headers: Record<string, string | number> = {
+    'Content-Type': mime, 'Accept-Ranges': 'bytes', 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-cache',
+  };
+  if (downloadName) headers['Content-Disposition'] = `attachment; filename="${basename(downloadName).replace(/[^A-Za-z0-9._-]/g, '_')}"`;
+  const range = req.headers.range;
+  if (range) {
+    const m = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
+    let start = m && m[1] !== '' ? parseInt(m[1], 10) : NaN;
+    let end = m && m[2] !== '' ? parseInt(m[2], 10) : NaN;
+    if (!m || (isNaN(start) && isNaN(end))) { res.writeHead(416, { 'Content-Range': `bytes */${size}` }); res.end(); return; }
+    if (isNaN(start)) { start = Math.max(0, size - end); end = size - 1; } // "bytes=-N": N byte cuối
+    else if (isNaN(end) || end >= size) end = size - 1;
+    if (start > end || start >= size) { res.writeHead(416, { 'Content-Range': `bytes */${size}` }); res.end(); return; }
+    res.writeHead(206, { ...headers, 'Content-Range': `bytes ${start}-${end}/${size}`, 'Content-Length': end - start + 1 });
+    createReadStream(path, { start, end }).pipe(res);
+    return;
+  }
+  res.writeHead(200, { ...headers, 'Content-Length': size });
+  createReadStream(path).pipe(res);
+}

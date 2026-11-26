@@ -422,7 +422,7 @@ export class FlowManager {
     }
   }
 
-  private broadcast(id: string, event: string, data: unknown): void {
+  broadcast(id: string, event: string, data: unknown): void {
     const session = this.flows.get(id);
     if (!session) return;
 

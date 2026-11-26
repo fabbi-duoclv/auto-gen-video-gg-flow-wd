@@ -42,6 +42,24 @@ export function resolveFfmpeg(): FfmpegInfo {
   throw new Error('Không tìm thấy ffmpeg dùng được. Chạy "npm install" (có ffmpeg-static) hoặc cài ffmpeg và/hoặc đặt FFMPEG_PATH.');
 }
 
+export interface MediaInfo { duration: number; hasAudio: boolean; hasVideo: boolean }
+
+/** Đọc nhanh độ dài và các luồng của tệp media (dùng ffmpeg -i, không cần ffprobe). */
+export function probeMedia(file: string): Promise<MediaInfo> {
+  return new Promise((resolve) => {
+    let bin: string;
+    try { bin = resolveFfmpeg().path; } catch { return resolve({ duration: 0, hasAudio: false, hasVideo: false }); }
+    const p = spawn(bin, ['-hide_banner', '-i', file], { stdio: ['ignore', 'ignore', 'pipe'] });
+    let err = '';
+    p.stderr.on('data', (d) => { err += d; });
+    p.on('error', () => resolve({ duration: 0, hasAudio: false, hasVideo: false }));
+    p.on('close', () => {
+      const m = err.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+      resolve({ duration: m ? +m[1] * 3600 + +m[2] * 60 + +m[3] : 0, hasAudio: /Stream #.*Audio:/.test(err), hasVideo: /Stream #.*Video:/.test(err) });
+    });
+  });
+}
+
 const durCache = new Map<string, number>();
 
 /** Độ dài (giây) của tệp media, đọc từ dòng "Duration:" của ffmpeg (không cần ffprobe). */
