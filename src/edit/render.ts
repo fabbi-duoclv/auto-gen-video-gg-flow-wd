@@ -135,7 +135,7 @@ export function planRender(ctx: RenderCtx, musicDuration = 0): RenderPlan {
     acc = `x${gi}`; accLen += glen[gi] - d;
   }
   const post: string[] = [];
-  if (project.grain) post.push('noise=alls=7:allf=t');
+  if (project.grain) post.push('noise=alls=3:allf=t'); // rất nhẹ: hạt mạnh làm tệp phình 2-10 lần và dựng chậm 2-3 lần
   post.push('subtitles=subs.ass:fontsdir=fonts');
   if (ctx.preview) post.push('scale=trunc(iw/4)*2:trunc(ih/4)*2');
   parts.push(`[${acc}]${post.join(',')}[vout]`);
@@ -157,7 +157,7 @@ export function planRender(ctx: RenderCtx, musicDuration = 0): RenderPlan {
   for (const p of inputs) args.push('-i', p);
   args.push('-filter_complex', parts.join(';'), '-map', '[vout]');
   if (audio) args.push('-map', '[aout]');
-  args.push('-c:v', 'libx264', '-preset', ctx.preview ? 'ultrafast' : 'fast', '-crf', ctx.preview ? '30' : '19', '-pix_fmt', 'yuv420p', '-r', String(F));
+  args.push('-c:v', 'libx264', '-preset', ctx.preview ? 'ultrafast' : 'veryfast', '-crf', ctx.preview ? '30' : '19', '-pix_fmt', 'yuv420p', '-r', String(F));
   if (audio) args.push('-c:a', 'aac', '-b:a', ctx.preview ? '96k' : '192k');
   args.push('-t', f3(total), '-movflags', '+faststart', '-progress', 'pipe:1', '-nostats', ctx.outPath);
   return { args, total, width: ctx.preview ? Math.trunc(W / 4) * 2 : W, height: ctx.preview ? Math.trunc(H / 4) * 2 : H, workDir, analysis };

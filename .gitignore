@@ -16,3 +16,6 @@ page.html
 
 # Ảnh thật cô dâu/chú rể upload qua web UI (dữ liệu cá nhân)
 flows/*/photos/
+
+# Bước Dựng: nhạc, LUT, dự án dựng của từng Flow (có thể lớn / có bản quyền)
+flows/*/edit/

@@ -63,7 +63,7 @@ export function buildDefaultProject(scenes: SceneData[], flowName = ''): EditPro
   chapters.forEach((c, i) => { chapterGrades[c] = DEFAULT_CYCLE[i] ?? 'neutral'; chapterTitles[c] = c; });
 
   return {
-    version: 1, canvas: 'pic', resolution: 1080, fps: 24, grain: true, titleFont: 'Lora', titleDur: TITLE_DUR,
+    version: 1, canvas: 'pic', resolution: 1080, fps: 24, grain: false, titleFont: 'Lora', titleDur: TITLE_DUR,
     plateScene: plate ? plate.s.sceneNumber : null,
     chapterGrades, chapterTitles, outputName: slugify(flowName),
     items, lyrics: [], music: defaultMusic(),
@@ -149,7 +149,7 @@ export function normalizeProject(raw: unknown, ctx: NormalizeCtx): EditProject {
     version: 1, canvas,
     resolution: r.resolution === 720 ? 720 : 1080,
     fps: r.fps === 30 ? 30 : 24,
-    grain: r.grain !== false,
+    grain: r.grain === true,
     titleFont: ctx.fonts.includes(String(r.titleFont)) ? String(r.titleFont) : ctx.fonts[0] ?? 'Lora',
     titleDur: num(r.titleDur, 0.8, 3, 1.3),
     plateScene: typeof r.plateScene === 'string' && r.plateScene ? r.plateScene.slice(0, 40) : null,
