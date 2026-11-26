@@ -1,0 +1,30 @@
+{
+  "name": "gg-flow-automation",
+  "version": "1.0.0",
+  "description": "Automate image & video generation on Google Flow using Playwright",
+  "type": "module",
+  "scripts": {
+    "login": "tsx scripts/login.ts",
+    "start": "tsx src/index.ts",
+    "start:resume": "tsx src/index.ts --resume",
+    "start:headless": "tsx src/index.ts --headless",
+    "serve": "tsx src/web/server.ts",
+    "test:upload-mock": "tsx scripts/test-upload-mock.ts",
+    "inspect:upload": "tsx scripts/inspect-upload.ts",
+    "test:upload": "tsx scripts/test-upload.ts"
+  },
+  "dependencies": {
+    "archiver": "^7.0.1",
+    "commander": "^13.0.0",
+    "dotenv": "^16.4.0",
+    "exceljs": "^4.4.0",
+    "playwright": "^1.52.0",
+    "sharp": "^0.35.5"
+  },
+  "devDependencies": {
+    "@types/archiver": "^7.0.0",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

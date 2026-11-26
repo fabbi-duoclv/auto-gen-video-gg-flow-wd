@@ -1,0 +1,424 @@
+import { randomUUID } from 'crypto';
+import { mkdirSync, existsSync, readFileSync, writeFileSync, readdirSync, rmSync, copyFileSync } from 'fs';
+import { join } from 'path';
+import type { ServerResponse } from 'http';
+import type { Page } from 'playwright';
+import { CONFIG, getFlowPaths, type FlowPaths } from './config.js';
+import { AutomationEngine, type RunConfig, type SceneStatus, type EngineState } from './engine.js';
+import { readScenes, readCharacters, type SceneData, type CharacterData } from './excel-reader.js';
+import { createFlowPage } from './browser.js';
+import { addLogListener, removeLogListener, type LogListener, log } from './logger.js';
+
+// ─── Types ───────────────────────────────────────────────────
+
+export interface FlowMeta {
+  id: string;
+  name: string;
+  status: 'created' | 'running' | 'stopped' | 'completed' | 'error';
+  createdAt: string;
+  updatedAt: string;
+  hasExcel: boolean;
+  sceneCount: number;
+}
+
+interface FlowSession {
+  meta: FlowMeta;
+  engine: AutomationEngine | null;
+  page: Page | null;
+  sseClients: Set<ServerResponse>;
+  logListener: LogListener | null;
+  promptOverrides: Map<string, { imagePrompt?: string; videoPrompt?: string }>;
+}
+
+// ─── FlowManager ─────────────────────────────────────────────
+
+export class FlowManager {
+  private flows = new Map<string, FlowSession>();
+
+  constructor() {
+    // Ensure flows dir exists
+    if (!existsSync(CONFIG.FLOWS_DIR)) {
+      mkdirSync(CONFIG.FLOWS_DIR, { recursive: true });
+    }
+
+    // Load existing flows from disk
+    this.loadFromDisk();
+  }
+
+  // ─── CRUD ────────────────────────────────────────────────
+
+  createFlow(name: string): FlowMeta {
+    const id = randomUUID();
+    const paths = getFlowPaths(id);
+
+    // Create directories
+    mkdirSync(paths.flowDir, { recursive: true });
+    mkdirSync(paths.outputDir, { recursive: true });
+
+    const meta: FlowMeta = {
+      id,
+      name: name || `Flow ${this.flows.size + 1}`,
+      status: 'created',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      hasExcel: false,
+      sceneCount: 0,
+    };
+
+    this.saveMeta(id, meta);
+
+    const session: FlowSession = {
+      meta,
+      engine: null,
+      page: null,
+      sseClients: new Set(),
+      logListener: null,
+      promptOverrides: new Map(),
+    };
+
+    this.flows.set(id, session);
+    log.success(`Flow created: ${meta.name} (${id})`);
+    return meta;
+  }
+
+  listFlows(): FlowMeta[] {
+    return Array.from(this.flows.values())
+      .map(s => s.meta)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  getFlow(id: string): FlowSession | undefined {
+    return this.flows.get(id);
+  }
+
+  getFlowMeta(id: string): FlowMeta | undefined {
+    return this.flows.get(id)?.meta;
+  }
+
+  async deleteFlow(id: string): Promise<void> {
+    const session = this.flows.get(id);
+    if (!session) throw new Error(`Flow ${id} not found`);
+
+    // Stop engine if running
+    if (session.engine && session.engine.getState() === 'running') {
+      session.engine.abort();
+    }
+
+    // Close page if open
+    if (session.page) {
+      await session.page.close().catch(() => {});
+      session.page = null;
+    }
+
+    // Remove log listener
+    if (session.logListener) {
+      removeLogListener(session.logListener);
+      session.logListener = null;
+    }
+
+    // Close SSE connections
+    for (const client of session.sseClients) {
+      client.end();
+    }
+    session.sseClients.clear();
+
+    // Delete folder
+    const paths = getFlowPaths(id);
+    if (existsSync(paths.flowDir)) {
+      rmSync(paths.flowDir, { recursive: true, force: true });
+    }
+
+    this.flows.delete(id);
+    log.info(`Flow deleted: ${id}`);
+  }
+
+  cloneFlow(sourceId: string, newName?: string): FlowMeta {
+    const source = this.flows.get(sourceId);
+    if (!source) throw new Error(`Flow ${sourceId} not found`);
+
+    const id = randomUUID();
+    const sourcePaths = getFlowPaths(sourceId);
+    const paths = getFlowPaths(id);
+
+    // Create directories
+    mkdirSync(paths.flowDir, { recursive: true });
+    mkdirSync(paths.outputDir, { recursive: true });
+
+    // Copy Excel if exists
+    let hasExcel = false;
+    let sceneCount = 0;
+    if (existsSync(sourcePaths.excelPath)) {
+      copyFileSync(sourcePaths.excelPath, paths.excelPath);
+      hasExcel = true;
+      sceneCount = source.meta.sceneCount;
+    }
+
+    const meta: FlowMeta = {
+      id,
+      name: newName || `${source.meta.name} (copy)`,
+      status: 'created',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      hasExcel,
+      sceneCount,
+    };
+
+    this.saveMeta(id, meta);
+
+    // Clone prompt overrides
+    const promptOverrides = new Map(source.promptOverrides);
+
+    this.flows.set(id, {
+      meta,
+      engine: null,
+      page: null,
+      sseClients: new Set(),
+      logListener: null,
+      promptOverrides,
+    });
+
+    log.success(`Flow cloned: ${meta.name} (${id}) from ${sourceId}`);
+    return meta;
+  }
+
+  // ─── Excel ───────────────────────────────────────────────
+
+  async uploadExcel(id: string, buffer: Buffer): Promise<void> {
+    const session = this.flows.get(id);
+    if (!session) throw new Error(`Flow ${id} not found`);
+
+    const paths = getFlowPaths(id);
+    writeFileSync(paths.excelPath, buffer);
+
+    // Count scenes to update meta
+    const scenes = await readScenes(paths.excelPath, ['AI-VID', 'AI-IMG', 'STOCK']);
+    session.meta.hasExcel = true;
+    session.meta.sceneCount = scenes.length;
+    session.meta.updatedAt = new Date().toISOString();
+    this.saveMeta(id, session.meta);
+  }
+
+  async getScenes(id: string): Promise<SceneData[]> {
+    const session = this.flows.get(id);
+    if (!session) throw new Error(`Flow ${id} not found`);
+
+    const paths = getFlowPaths(id);
+    if (!existsSync(paths.excelPath)) return [];
+
+    const scenes = await readScenes(paths.excelPath, ['AI-VID', 'AI-IMG', 'STOCK']);
+
+    // Apply prompt overrides
+    return scenes.map(s => ({
+      ...s,
+      imagePrompt: session.promptOverrides.get(s.sceneNumber)?.imagePrompt ?? s.imagePrompt,
+      videoPrompt: session.promptOverrides.get(s.sceneNumber)?.videoPrompt ?? s.videoPrompt,
+    }));
+  }
+
+  async getCharacters(id: string): Promise<CharacterData[]> {
+    const paths = getFlowPaths(id);
+    if (!existsSync(paths.excelPath)) return [];
+    return readCharacters(paths.excelPath);
+  }
+
+  updateScenePrompt(id: string, sceneId: string, update: { imagePrompt?: string; videoPrompt?: string }): void {
+    const session = this.flows.get(id);
+    if (!session) throw new Error(`Flow ${id} not found`);
+
+    const existing = session.promptOverrides.get(sceneId) || {};
+    if (update.imagePrompt !== undefined) existing.imagePrompt = update.imagePrompt;
+    if (update.videoPrompt !== undefined) existing.videoPrompt = update.videoPrompt;
+    session.promptOverrides.set(sceneId, existing);
+  }
+
+  // ─── Engine Control ──────────────────────────────────────
+
+  getRunningCount(): number {
+    let count = 0;
+    for (const session of this.flows.values()) {
+      if (session.engine?.getState() === 'running') count++;
+    }
+    return count;
+  }
+
+  async startFlow(id: string, config: RunConfig = {}): Promise<void> {
+    const session = this.flows.get(id);
+    if (!session) throw new Error(`Flow ${id} not found`);
+
+    if (session.engine?.getState() === 'running') {
+      throw new Error('Flow is already running');
+    }
+
+    if (this.getRunningCount() >= CONFIG.MAX_CONCURRENT_FLOWS) {
+      throw new Error(`Max concurrent flows (${CONFIG.MAX_CONCURRENT_FLOWS}) reached`);
+    }
+
+    const paths = getFlowPaths(id);
+    if (!existsSync(paths.excelPath)) {
+      throw new Error('No Excel file uploaded for this flow');
+    }
+
+    // Create a new browser tab for this flow
+    const page = await createFlowPage();
+    session.page = page;
+
+    // Create engine with flow-specific config
+    const engine = new AutomationEngine({
+      flowId: id,
+      excelPath: paths.excelPath,
+      outputDir: paths.outputDir,
+      progressFile: paths.progressFile,
+      page,
+      createPage: () => createFlowPage(),
+    });
+
+    session.engine = engine;
+
+    // Wire engine events → SSE broadcast
+    engine.on('state-change', (state: EngineState) => {
+      if (state === 'running') session.meta.status = 'running';
+      else if (state === 'idle') {
+        session.meta.status = session.meta.status === 'running' ? 'completed' : session.meta.status;
+      }
+      session.meta.updatedAt = new Date().toISOString();
+      this.saveMeta(id, session.meta);
+      this.broadcast(id, 'state', { state });
+    });
+
+    engine.on('progress', (statuses: SceneStatus[]) => {
+      this.broadcast(id, 'progress', statuses);
+    });
+
+    engine.on('run-complete', (result: any) => {
+      session.meta.status = 'completed';
+      session.meta.updatedAt = new Date().toISOString();
+      this.saveMeta(id, session.meta);
+      this.broadcast(id, 'run-complete', result);
+    });
+
+    engine.on('engine-error', (msg: string) => {
+      session.meta.status = 'error';
+      session.meta.updatedAt = new Date().toISOString();
+      this.saveMeta(id, session.meta);
+      this.broadcast(id, 'engine-error', msg);
+    });
+
+    // Wire flow-scoped logs → SSE
+    const logListener: LogListener = (entry) => {
+      if (entry.flowId === id) {
+        this.broadcast(id, 'log', entry);
+      }
+    };
+    addLogListener(logListener);
+    session.logListener = logListener;
+
+    // Update status and start (non-blocking)
+    session.meta.status = 'running';
+    session.meta.updatedAt = new Date().toISOString();
+    this.saveMeta(id, session.meta);
+
+    engine.start(config).catch(() => {}).finally(() => {
+      // Cleanup log listener when done
+      if (session.logListener) {
+        removeLogListener(session.logListener);
+        session.logListener = null;
+      }
+    });
+  }
+
+  stopFlow(id: string): void {
+    const session = this.flows.get(id);
+    if (!session) throw new Error(`Flow ${id} not found`);
+
+    if (session.engine) {
+      session.engine.abort();
+      session.meta.status = 'stopped';
+      session.meta.updatedAt = new Date().toISOString();
+      this.saveMeta(id, session.meta);
+    }
+  }
+
+  getFlowStatus(id: string): { state: EngineState; scenes: SceneStatus[] } {
+    const session = this.flows.get(id);
+    if (!session) throw new Error(`Flow ${id} not found`);
+
+    return {
+      state: session.engine?.getState() || 'idle',
+      scenes: session.engine?.getSceneStatuses() || [],
+    };
+  }
+
+  // ─── SSE ─────────────────────────────────────────────────
+
+  addSSEClient(id: string, res: ServerResponse): void {
+    const session = this.flows.get(id);
+    if (!session) return;
+
+    session.sseClients.add(res);
+    res.on('close', () => session.sseClients.delete(res));
+
+    // Send current state immediately
+    const state = session.engine?.getState() || 'idle';
+    const statuses = session.engine?.getSceneStatuses() || [];
+    res.write(`event: state\ndata: ${JSON.stringify({ state })}\n\n`);
+    if (statuses.length > 0) {
+      res.write(`event: progress\ndata: ${JSON.stringify(statuses)}\n\n`);
+    }
+  }
+
+  private broadcast(id: string, event: string, data: unknown): void {
+    const session = this.flows.get(id);
+    if (!session) return;
+
+    const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+    for (const client of session.sseClients) {
+      client.write(payload);
+    }
+  }
+
+  // ─── Persistence ─────────────────────────────────────────
+
+  private saveMeta(id: string, meta: FlowMeta): void {
+    const paths = getFlowPaths(id);
+    if (existsSync(paths.flowDir)) {
+      writeFileSync(paths.metaFile, JSON.stringify(meta, null, 2));
+    }
+  }
+
+  private loadFromDisk(): void {
+    if (!existsSync(CONFIG.FLOWS_DIR)) return;
+
+    const entries = readdirSync(CONFIG.FLOWS_DIR, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+
+      const id = entry.name;
+      const paths = getFlowPaths(id);
+
+      if (!existsSync(paths.metaFile)) continue;
+
+      try {
+        const meta = JSON.parse(readFileSync(paths.metaFile, 'utf-8')) as FlowMeta;
+
+        // Reset running status on restart
+        if (meta.status === 'running') {
+          meta.status = 'stopped';
+          this.saveMeta(id, meta);
+        }
+
+        this.flows.set(id, {
+          meta,
+          engine: null,
+          page: null,
+          sseClients: new Set(),
+          logListener: null,
+          promptOverrides: new Map(),
+        });
+      } catch {
+        log.warn(`Failed to load flow ${id}, skipping`);
+      }
+    }
+
+    log.info(`Loaded ${this.flows.size} flow(s) from disk`);
+  }
+}

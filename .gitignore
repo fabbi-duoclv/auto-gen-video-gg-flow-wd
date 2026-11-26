@@ -1,0 +1,15 @@
+node_modules/
+dist/
+browser-data/
+output/
+progress.json
+.env
+browser-profile/
+.claude/
+
+# ảnh thật của cô dâu/chú rể: không commit
+wedding-video/photos/*
+!wedding-video/photos/README.md
+
+# trang Flow đã lưu: chứa token/email tài khoản, KHÔNG commit
+page.html

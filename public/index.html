@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GG Flow Automation</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
+<style>
+  :root {
+    --bg: #f5f7fa;
+    --bg-card: #ffffff;
+    --bg-hover: #f0f4ff;
+    --bg-selected: #e8eeff;
+    --border: #e2e8f0;
+    --text: #1a202c;
+    --text-secondary: #64748b;
+    --text-muted: #94a3b8;
+    --primary: #6366f1;
+    --primary-light: #e0e7ff;
+    --primary-hover: #4f46e5;
+    --success: #10b981;
+    --success-light: #d1fae5;
+    --warning: #f59e0b;
+    --warning-light: #fef3c7;
+    --danger: #ef4444;
+    --danger-light: #fee2e2;
+    --info: #3b82f6;
+    --info-light: #dbeafe;
+    --purple: #8b5cf6;
+    --purple-light: #ede9fe;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08);
+    --shadow-lg: 0 4px 12px rgba(0,0,0,0.1);
+    --radius: 8px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+  #app { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+  /* Header */
+  .header { display: flex; align-items: center; justify-content: space-between; padding: 10px 20px; background: var(--bg-card); border-bottom: 1px solid var(--border); flex-shrink: 0; box-shadow: var(--shadow); z-index: 10; }
+  .header-left { display: flex; align-items: center; gap: 12px; }
+  .header-left h1 { font-size: 20px; font-weight: 700; background: linear-gradient(135deg, var(--primary), var(--purple)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; cursor: pointer; }
+  .header-actions { display: flex; gap: 8px; align-items: center; }
+
+  /* Buttons */
+  button { padding: 8px 18px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; transition: all .15s; }
+  .btn-primary { background: var(--primary); color: white; }
+  .btn-primary:hover { background: var(--primary-hover); transform: translateY(-1px); box-shadow: 0 2px 8px rgba(99,102,241,.3); }
+  .btn-primary:disabled { background: #cbd5e1; color: #94a3b8; cursor: not-allowed; transform: none; box-shadow: none; }
+  .btn-danger { background: var(--danger); color: white; }
+  .btn-danger:hover { background: #dc2626; }
+  .btn-danger:disabled { background: #cbd5e1; color: #94a3b8; cursor: not-allowed; }
+  .btn-outline { background: white; color: var(--text); border: 1px solid var(--border); }
+  .btn-outline:hover { background: var(--bg); border-color: var(--primary); color: var(--primary); }
+  .btn-success { background: var(--success); color: white; }
+  .btn-success:hover { background: #059669; }
+  .btn-import { background: linear-gradient(135deg, var(--info), var(--primary)); color: white; }
+  .btn-import:hover { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(59,130,246,.3); }
+  .btn-sm { padding: 3px 8px; font-size: 13px; }
+
+  /* Status */
+  .status-badge { padding: 4px 12px; border-radius: 20px; font-size: 13px; font-weight: 600; }
+  .status-idle,.status-created { background: #f1f5f9; color: #64748b; }
+  .status-running { background: var(--success-light); color: var(--success); animation: pulse 2s infinite; }
+  .status-stopping,.status-stopped { background: var(--warning-light); color: var(--warning); }
+  .status-completed { background: var(--success-light); color: var(--success); }
+  .status-error { background: var(--danger-light); color: var(--danger); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.7} }
+
+  /* Tags */
+  .tag { font-size: 12px; padding: 2px 8px; border-radius: 4px; font-weight: 600; letter-spacing: .3px; }
+  .tag-vid { background: var(--purple-light); color: var(--purple); }
+  .tag-img { background: var(--info-light); color: var(--info); }
+  .tag-stock { background: #f1f5f9; color: #94a3b8; }
+  .tag-step { font-size: 11px; padding: 2px 6px; border-radius: 10px; font-weight: 600; }
+  .step-waiting { background: #f1f5f9; color: #94a3b8; }
+  .step-image-gen, .step-image-download { background: var(--info-light); color: var(--info); }
+  .step-video-gen, .step-video-download { background: var(--purple-light); color: var(--purple); }
+  .step-complete { background: var(--success-light); color: var(--success); }
+  .step-failed { background: var(--danger-light); color: var(--danger); }
+
+  /* Summary */
+  .summary { display: flex; gap: 16px; padding: 8px 20px; background: var(--bg-card); border-bottom: 1px solid var(--border); flex-shrink: 0; align-items: center; flex-wrap: wrap; }
+  .summary-item { font-size: 13px; color: var(--text-secondary); display: flex; align-items: center; gap: 4px; }
+  .summary-item strong { color: var(--text); font-size: 18px; }
+  .summary-settings { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+  .summary-settings label { font-size: 13px; color: var(--text-secondary); display: flex; align-items: center; gap: 3px; cursor: pointer; }
+  select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; font-size: 14px; }
+
+  /* Empty */
+  .empty-state { text-align: center; padding: 80px 20px; }
+  .empty-icon { font-size: 48px; margin-bottom: 16px; }
+  .empty-state h2 { font-size: 18px; color: var(--text-secondary); margin-bottom: 8px; font-weight: 600; }
+  .empty-state p { font-size: 13px; color: var(--text-muted); margin-bottom: 20px; }
+
+  /* Main */
+  .main { display: grid; grid-template-columns: 1fr 380px; flex: 1; overflow: hidden; min-height: 0; }
+
+  /* Left */
+  .left-panel { display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+  .tabs { display: flex; background: var(--bg-card); border-bottom: 1px solid var(--border); flex-shrink: 0; padding: 0 16px; }
+  .tab { padding: 8px 16px; font-size: 13px; color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent; font-weight: 500; transition: all .15s; }
+  .tab:hover { color: var(--text-secondary); }
+  .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+  .tab-content { flex: 1; overflow-y: auto; background: var(--bg); min-height: 0; }
+
+  /* Table */
+  .scene-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .scene-table th { text-align: left; padding: 8px 12px; background: var(--bg-card); color: var(--text-muted); font-weight: 500; font-size: 13px; text-transform: uppercase; letter-spacing: .5px; position: sticky; top: 0; z-index: 1; border-bottom: 1px solid var(--border); }
+  .scene-table td { padding: 8px 12px; border-bottom: 1px solid #f0f0f0; }
+  .scene-table tr:hover td { background: var(--bg-hover); }
+  .scene-table tr.selected td { background: var(--bg-selected); }
+  .scene-table .scene-name-cell { font-weight: 500; }
+  .prompt-preview { color: var(--text-muted); font-size: 13px; max-width: 350px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+  .char-list { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+
+  .char-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .char-table th { text-align: left; padding: 8px 12px; background: var(--bg-card); color: var(--text-muted); font-weight: 500; font-size: 13px; text-transform: uppercase; letter-spacing: .5px; position: sticky; top: 0; border-bottom: 1px solid var(--border); }
+  .char-table td { padding: 8px 12px; border-bottom: 1px solid #f0f0f0; }
+  .char-name { font-weight: 600; color: var(--text); }
+  .char-role { color: var(--text-muted); font-size: 14px; }
+
+  /* Right panel */
+  .right-panel { display: flex; flex-direction: column; overflow: hidden; min-height: 0; background: var(--bg-card); border-left: 1px solid var(--border); }
+  .right-tabs { display: flex; background: var(--bg-card); border-bottom: 1px solid var(--border); padding: 0 12px; flex-shrink: 0; }
+  .right-tab-content { flex: 1; overflow-y: auto; min-height: 0; }
+
+  /* Detail */
+  .detail-content { padding: 16px; }
+  .detail-empty { color: var(--text-muted); font-size: 13px; text-align: center; margin-top: 40px; }
+  .detail-title { font-size: 18px; font-weight: 600; color: var(--text); margin: 8px 0; }
+  .detail-field { margin-bottom: 14px; }
+  .detail-label { font-size: 13px; color: var(--text-muted); margin-bottom: 4px; font-weight: 500; text-transform: uppercase; letter-spacing: .3px; }
+  .detail-value { font-size: 13px; color: var(--text-secondary); }
+  .detail-meta { display: flex; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
+  .detail-meta-item { font-size: 14px; color: var(--text-muted); }
+  .detail-meta-item strong { color: var(--text); }
+
+  .prompt-edit { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; font-size: 14px; resize: vertical; min-height: 60px; font-family: inherit; line-height: 1.5; transition: border-color .15s; }
+  .prompt-edit:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 0 3px rgba(99,102,241,.1); }
+
+  .progress-bar { height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden; margin-top: 6px; }
+  .progress-fill { height: 100%; border-radius: 3px; transition: width .3s; }
+  .fill-image { background: linear-gradient(90deg, var(--info), #60a5fa); }
+  .fill-video { background: linear-gradient(90deg, var(--purple), #a78bfa); }
+  .fill-complete { background: linear-gradient(90deg, var(--success), #34d399); }
+  .fill-failed { background: var(--danger); }
+
+  /* Log */
+  .log-content { padding: 8px 12px; font-family: 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace; font-size: 13px; line-height: 1.6; background: #1e293b; color: #cbd5e1; min-height: 100%; }
+  .log-entry { white-space: pre-wrap; word-break: break-all; }
+  .log-info { color: #94a3b8; }
+  .log-success { color: #34d399; }
+  .log-warn { color: #fbbf24; }
+  .log-error { color: #f87171; }
+
+  /* Results */
+  .results-bar { display: flex; gap: 8px; padding: 8px 20px; background: var(--bg-card); border-top: 1px solid var(--border); overflow-x: auto; flex-shrink: 0; align-items: center; }
+  .results-bar:empty { display: none; }
+  .results-bar h4 { font-size: 14px; color: var(--text-muted); white-space: nowrap; margin-right: 4px; font-weight: 500; }
+  .result-thumb { width: 64px; height: 36px; object-fit: cover; border-radius: 6px; border: 2px solid var(--border); cursor: pointer; flex-shrink: 0; transition: all .15s; }
+  .result-thumb:hover { border-color: var(--primary); transform: scale(1.05); box-shadow: var(--shadow-lg); }
+
+  /* Bottom */
+  .bottom-bar { display: flex; align-items: center; justify-content: space-between; padding: 6px 20px; background: var(--bg-card); border-top: 1px solid var(--border); flex-shrink: 0; font-size: 13px; color: var(--text-muted); }
+
+  /* Modal (media viewer) */
+  .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:100; align-items:center; justify-content:center; backdrop-filter: blur(4px); }
+  .modal-overlay.active { display:flex; }
+  .modal { background: var(--bg-card); border-radius: 12px; max-width: 90vw; max-height: 90vh; overflow: auto; box-shadow: var(--shadow-lg); }
+  .modal img,.modal video { max-width:90vw; max-height:85vh; display:block; border-radius: 8px; }
+
+  /* Dialog (prompt/confirm replacement) */
+  .dialog-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:200; align-items:center; justify-content:center; backdrop-filter: blur(3px); }
+  .dialog-overlay.active { display:flex; }
+  .dialog { background: var(--bg-card); border-radius: 12px; padding: 24px; min-width: 360px; max-width: 440px; box-shadow: var(--shadow-lg); }
+  .dialog h3 { font-size: 16px; font-weight: 600; margin-bottom: 16px; color: var(--text); }
+  .dialog p { font-size: 14px; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.5; }
+  .dialog input[type="text"] { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 14px; font-family: inherit; margin-bottom: 16px; transition: border-color .15s; color: var(--text); background: var(--bg); }
+  .dialog input[type="text"]:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 0 3px rgba(99,102,241,.1); }
+  .dialog-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .dialog-actions button { min-width: 80px; }
+
+  #fileInput { display: none; }
+
+  /* Home view */
+  .home-content { flex: 1; overflow-y: auto; padding: 24px; }
+  .flow-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+  .flow-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; cursor: pointer; transition: all .15s; position: relative; }
+  .flow-card:hover { border-color: var(--primary); box-shadow: var(--shadow-lg); transform: translateY(-2px); }
+  .flow-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .flow-card-name { font-size: 16px; font-weight: 600; color: var(--text); }
+  .flow-card-meta { font-size: 13px; color: var(--text-muted); display: flex; gap: 12px; margin-top: 8px; }
+  .flow-card-actions { position: absolute; top: 10px; right: 10px; display: flex; gap: 4px; opacity: 0; transition: opacity .15s; }
+  .flow-card:hover .flow-card-actions { opacity: 1; }
+  .flow-card-actions button { background: none; border: none; padding: 4px; font-size: 16px; cursor: pointer; color: var(--text-muted); border-radius: 4px; transition: all .15s; }
+  .flow-card-actions button:hover { background: var(--bg); }
+  .flow-card-actions .fc-clone:hover { color: var(--primary); }
+  .flow-card-actions .fc-delete:hover { color: var(--danger); }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  .log-content::-webkit-scrollbar-thumb { background: #475569; }
+
+  /* Toast */
+  .toast-container { position: fixed; top: 16px; right: 16px; z-index: 300; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+  .toast { pointer-events: auto; display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 8px; background: var(--bg-card); box-shadow: var(--shadow-lg); border-left: 4px solid var(--border); font-size: 13px; color: var(--text); min-width: 260px; max-width: 400px; animation: toast-in .3s ease; }
+  .toast.removing { animation: toast-out .25s ease forwards; }
+  .toast-success { border-left-color: var(--success); }
+  .toast-error { border-left-color: var(--danger); }
+  .toast-info { border-left-color: var(--info); }
+  .toast-icon { font-size: 16px; flex-shrink: 0; }
+  .toast-msg { flex: 1; line-height: 1.4; }
+  @keyframes toast-in { from { opacity: 0; transform: translateX(80px); } to { opacity: 1; transform: translateX(0); } }
+  @keyframes toast-out { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(80px); } }
+
+  /* Button loading */
+  .btn-loading { position: relative; color: transparent !important; pointer-events: none; }
+  .btn-loading::after { content: ''; position: absolute; inset: 0; margin: auto; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.3); border-top-color: white; border-radius: 50%; animation: spin .6s linear infinite; }
+  .btn-outline.btn-loading::after { border-color: rgba(0,0,0,.15); border-top-color: var(--primary); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div id="app"></div>
+
+<div class="modal-overlay" id="modal" onclick="closeModal()">
+  <div class="modal" onclick="event.stopPropagation()" id="modalContent"></div>
+</div>
+
+<div class="dialog-overlay" id="dialogOverlay">
+  <div class="dialog" id="dialogBox"></div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+// ─── Toast & Loading ─────────────────────────────────────
+const TOAST_ICONS = { success: '✅', error: '❌', info: 'ℹ️' };
+function showToast(message, type = 'info', duration = 3500) {
+  const c = document.getElementById('toastContainer');
+  const t = document.createElement('div');
+  t.className = 'toast toast-' + type;
+  t.innerHTML = '<span class="toast-icon">' + (TOAST_ICONS[type] || '') + '</span><span class="toast-msg">' + esc(message) + '</span>';
+  c.appendChild(t);
+  setTimeout(() => { t.classList.add('removing'); setTimeout(() => t.remove(), 250); }, duration);
+}
+
+async function withLoading(btn, asyncFn, restoreDisabled = true) {
+  if (!btn) return asyncFn();
+  const wasDis = btn.disabled;
+  btn.classList.add('btn-loading');
+  btn.disabled = true;
+  try { return await asyncFn(); }
+  catch (e) { showToast(e.message || 'Something went wrong', 'error'); throw e; }
+  finally { btn.classList.remove('btn-loading'); if (restoreDisabled) btn.disabled = wasDis; }
+}
+
+// ─── Routing ─────────────────────────────────────────────
+const API = '/api/flows';
+let currentFlowId = null;
+
+function getFlowIdFromUrl() {
+  const m = window.location.pathname.match(/^\/flow\/([a-f0-9-]+)/);
+  return m ? m[1] : null;
+}
+
+function navigate(path) {
+  window.history.pushState({}, '', path);
+  route();
+}
+
+function route() {
+  currentFlowId = getFlowIdFromUrl();
+  if (currentFlowId) {
+    renderFlowView();
+  } else {
+    renderHomeView();
+  }
+}
+
+window.addEventListener('popstate', route);
+
+// ─── HOME VIEW ───────────────────────────────────────────
+let allFlows = [];
+
+async function loadFlows() {
+  const res = await fetch(API);
+  allFlows = await res.json();
+}
+
+function renderHomeView() {
+  document.getElementById('app').innerHTML = `
+    <div class="header">
+      <div class="header-left"><h1 onclick="navigate('/')">GG Flow</h1></div>
+      <div class="header-actions">
+        <button class="btn-outline btn-sm" onclick="doLogin()">Login</button>
+        <button class="btn-primary" onclick="createFlow()">+ Create Flow</button>
+      </div>
+    </div>
+    <div class="home-content" id="homeContent">
+      <div style="text-align:center;padding:40px;color:var(--text-muted)">Loading...</div>
+    </div>
+    <div class="bottom-bar"><span>${allFlows.length} flow(s)</span><span></span></div>
+  `;
+  loadFlows().then(renderFlowList);
+}
+
+function renderFlowList() {
+  const el = document.getElementById('homeContent');
+  if (!el) return;
+  document.querySelector('.bottom-bar span').textContent = allFlows.length + ' flow(s)';
+
+  if (!allFlows.length) {
+    el.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">🎬</div>
+        <h2>No flows yet</h2>
+        <p>Create a new flow to start generating AI images and videos</p>
+        <button class="btn-primary" onclick="createFlow()" style="margin-top:12px">+ Create Flow</button>
+      </div>`;
+    return;
+  }
+
+  el.innerHTML = '<div class="flow-grid">' + allFlows.map(f => {
+    const date = new Date(f.createdAt).toLocaleString('vi-VN');
+    return `
+      <div class="flow-card" onclick="navigate('/flow/${f.id}')">
+        <div class="flow-card-actions">
+          <button class="fc-clone" onclick="event.stopPropagation();cloneFlow('${f.id}')" title="Clone">📋</button>
+          <button class="fc-delete" onclick="event.stopPropagation();deleteFlow('${f.id}')" title="Delete">✕</button>
+        </div>
+        <div class="flow-card-header">
+          <span class="flow-card-name">${esc(f.name)}</span>
+          <span class="status-badge status-${f.status}">${f.status}</span>
+        </div>
+        <div class="flow-card-meta">
+          <span>${f.sceneCount} scenes</span>
+          <span>${f.hasExcel ? '📊 Excel loaded' : '⏳ No data'}</span>
+          <span>${date}</span>
+        </div>
+      </div>`;
+  }).join('') + '</div>';
+}
+
+function createFlow() {
+  showPromptDialog('Create Flow', 'Flow name:', '', async (name) => {
+    try {
+      const res = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name || undefined }),
+      });
+      if (!res.ok) throw new Error('Failed to create flow');
+      const meta = await res.json();
+      showToast('Flow created!', 'success');
+      navigate('/flow/' + meta.id);
+    } catch (e) { showToast(e.message, 'error'); }
+  });
+}
+
+async function cloneFlow(id) {
+  const flow = allFlows.find(f => f.id === id);
+  const name = flow ? flow.name : 'Flow';
+  try {
+    const res = await fetch(API + '/' + id + '/clone', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name + ' (copy)' }),
+    });
+    if (!res.ok) throw new Error('Failed to clone flow');
+    showToast('Flow cloned!', 'success');
+    await loadFlows();
+    renderFlowList();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+function deleteFlow(id) {
+  showConfirmDialog('Delete Flow', 'Delete this flow and all its data? This cannot be undone.', async () => {
+    try {
+      const res = await fetch(API + '/' + id, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to delete flow');
+      allFlows = allFlows.filter(f => f.id !== id);
+      showToast('Flow deleted', 'success');
+      renderFlowList();
+    } catch (e) { showToast(e.message, 'error'); }
+  });
+}
+
+// ─── FLOW VIEW ───────────────────────────────────────────
+let scenes = [], characters = [], selectedScene = null, engineState = 'idle', sceneStatuses = {};
+let currentTab = 'scenes', currentRightTab = 'detail', logEntries = [];
+let eventSource = null;
+let flowMeta = null;
+
+function apiUrl(path) { return API + '/' + currentFlowId + '/' + path; }
+
+async function renderFlowView() {
+  // Reset state
+  scenes = []; characters = []; selectedScene = null; sceneStatuses = {};
+  logEntries = []; engineState = 'idle';
+
+  // Close previous SSE
+  if (eventSource) { eventSource.close(); eventSource = null; }
+
+  // Load flow meta
+  const metaRes = await fetch(API + '/' + currentFlowId);
+  if (!metaRes.ok) { navigate('/'); return; }
+  flowMeta = await metaRes.json();
+
+  document.getElementById('app').innerHTML = `
+    <div class="header">
+      <div class="header-left">
+        <h1 onclick="navigate('/')">GG Flow</h1>
+        <span style="color:var(--text-muted);font-size:14px">›</span>
+        <span style="font-weight:600;font-size:16px">${esc(flowMeta.name)}</span>
+        <span id="statusBadge" class="status-badge status-${flowMeta.status}">${flowMeta.status}</span>
+      </div>
+      <div class="header-actions">
+        <button class="btn-import" onclick="document.getElementById('fileInput').click()">Import Excel</button>
+        <input type="file" id="fileInput" accept=".xlsx,.xls" onchange="uploadExcel(this)">
+        <button class="btn-primary" id="btnStart" onclick="doStart()" disabled>Start</button>
+        <button class="btn-danger" id="btnStop" onclick="doStop()" disabled>Stop</button>
+      </div>
+    </div>
+    <div class="summary" id="summaryBar" style="display:none">
+      <span class="summary-item" id="sumScenes"></span>
+      <span class="summary-item" id="sumChars"></span>
+      <span class="summary-item" id="sumTypes"></span>
+      <div class="summary-settings">
+        <label>Ratio <select id="ratio"><option value="16:9" selected>16:9</option><option value="9:16">9:16</option><option value="1:1">1:1</option></select></label>
+        <label>Count <select id="genCount"><option value="1" selected>x1</option><option value="2">x2</option></select></label>
+        <label><input type="checkbox" id="imageOnly"> Img only</label>
+        <label><input type="checkbox" id="videoOnly"> Vid only</label>
+        <label><input type="checkbox" id="resume"> Resume</label>
+      </div>
+    </div>
+    <div class="main">
+      <div class="left-panel">
+        <div class="tabs">
+          <div class="tab active" onclick="switchTab('scenes',this)">🎬 Scenes</div>
+          <div class="tab" onclick="switchTab('chars',this)">👤 Characters</div>
+        </div>
+        <div class="tab-content" id="tabContent">
+          <div class="empty-state"><div class="empty-icon">📋</div><h2>No data loaded</h2><p>Import an Excel file</p><button class="btn-import" onclick="document.getElementById('fileInput').click()" style="margin-top:12px">Import Excel</button></div>
+        </div>
+      </div>
+      <div class="right-panel">
+        <div class="right-tabs tabs">
+          <div class="tab active" onclick="switchRightTab('detail',this)">📄 Detail</div>
+          <div class="tab" onclick="switchRightTab('log',this)">📋 Log</div>
+        </div>
+        <div class="right-tab-content" id="rightContent">
+          <div class="detail-content"><div class="detail-empty">Select a scene to view details</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="results-bar" id="resultsBar"></div>
+    <div class="bottom-bar"><span id="bottomStats">Import an Excel file to start</span><span id="progressStats"></span></div>
+  `;
+
+  await loadFlowData();
+  connectFlowSSE();
+  requestNotificationPermission();
+  loadResults();
+}
+
+async function uploadExcel(input) {
+  const f = input.files[0]; if (!f) return;
+  const btn = document.querySelector('.btn-import');
+  await withLoading(btn, async () => {
+    const res = await fetch(apiUrl('upload'), { method: 'POST', body: await f.arrayBuffer() });
+    const data = await res.json();
+    input.value = '';
+    if (!res.ok) {
+      const msg = data.details ? data.details.join('\n') : data.error;
+      showAlertDialog('Import Failed', msg);
+      return;
+    }
+    showToast('Excel imported successfully', 'success');
+    await loadFlowData();
+  });
+}
+
+async function loadFlowData() {
+  try {
+    const [sR, cR] = await Promise.all([fetch(apiUrl('scenes')), fetch(apiUrl('characters'))]);
+    if (!sR.ok || !cR.ok) throw new Error('Failed to load data');
+    scenes = await sR.json(); characters = await cR.json();
+    renderSummary(); renderLeft();
+    const btnStart = document.getElementById('btnStart');
+    if (btnStart) btnStart.disabled = !scenes.length;
+    if (scenes.length && !selectedScene) selectScene(scenes[0].sceneNumber);
+  } catch (e) { showToast('Failed to load flow data', 'error'); }
+}
+
+function renderSummary() {
+  if (!scenes.length) { const el = document.getElementById('summaryBar'); if (el) el.style.display = 'none'; return; }
+  const el = document.getElementById('summaryBar'); if (el) el.style.display = '';
+  const v = scenes.filter(s => s.type === 'AI-VID').length, i = scenes.filter(s => s.type === 'AI-IMG').length, k = scenes.filter(s => s.type === 'STOCK').length;
+  const ss = document.getElementById('sumScenes'); if (ss) ss.innerHTML = '<strong>' + scenes.length + '</strong>&nbsp;scenes';
+  const sc = document.getElementById('sumChars'); if (sc) sc.innerHTML = '<strong>' + characters.length + '</strong>&nbsp;characters';
+  let t = []; if (v) t.push('<span class="tag tag-vid">' + v + ' VID</span>'); if (i) t.push('<span class="tag tag-img">' + i + ' IMG</span>'); if (k) t.push('<span class="tag tag-stock">' + k + ' STOCK</span>');
+  const st = document.getElementById('sumTypes'); if (st) st.innerHTML = t.join(' ');
+}
+
+function switchTab(t, el) { currentTab = t; document.querySelectorAll('.left-panel .tab').forEach(x => x.classList.remove('active')); el.classList.add('active'); renderLeft(); }
+function switchRightTab(t, el) { currentRightTab = t; document.querySelectorAll('.right-panel .tabs .tab').forEach(x => x.classList.remove('active')); el.classList.add('active'); renderRight(); }
+
+function renderLeft() {
+  const el = document.getElementById('tabContent');
+  if (!el) return;
+  if (!scenes.length) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">📋</div><h2>No data loaded</h2><p>Import an Excel file</p><button class="btn-import" onclick="document.getElementById(\'fileInput\').click()" style="margin-top:12px">Import Excel</button></div>'; return; }
+  currentTab === 'scenes' ? renderScenes(el) : renderChars(el);
+}
+
+function renderScenes(el) {
+  const rows = scenes.map(s => {
+    const tc = s.type === 'AI-VID' ? 'tag-vid' : s.type === 'AI-IMG' ? 'tag-img' : 'tag-stock';
+    const st = sceneStatuses[s.sceneNumber] || '';
+    const stH = st && st !== 'waiting' ? '<span class="tag-step step-' + st + '">' + st + '</span>' : '';
+    const sel = selectedScene === s.sceneNumber ? ' selected' : '';
+    const pr = (s.imagePrompt || '').substring(0, 60);
+    const ch = s.characterNames?.length ? '<div class="char-list">' + s.characterNames.join(', ') + '</div>' : '';
+    return '<tr class="' + sel + '" onclick="selectScene(\'' + s.sceneNumber + '\')">' +
+      '<td><input type="checkbox" class="scene-check" value="' + s.sceneNumber + '" checked onclick="event.stopPropagation()"></td>' +
+      '<td style="color:var(--primary);font-weight:700">' + s.sceneNumber + '</td>' +
+      '<td><div class="scene-name-cell">' + s.sceneName + ' ' + stH + '</div><div class="prompt-preview">' + pr + '</div>' + ch + '</td>' +
+      '<td><span class="tag ' + tc + '">' + s.type.replace('AI-', '') + '</span></td></tr>';
+  }).join('');
+  el.innerHTML = '<table class="scene-table"><thead><tr><th style="width:32px"><input type="checkbox" checked onchange="selectAll(this.checked)"></th><th style="width:36px">#</th><th>Scene</th><th style="width:55px">Type</th></tr></thead><tbody>' + rows + '</tbody></table>';
+}
+
+function renderChars(el) {
+  const rows = characters.map(c => '<tr><td style="color:var(--primary);font-weight:700">' + c.id + '</td><td><span class="char-name">' + c.name + '</span><div class="char-role">' + c.role + '</div></td><td class="prompt-preview" style="max-width:250px">' + ((c.promptHeadshot || '').substring(0, 80)) + '</td></tr>').join('');
+  el.innerHTML = '<table class="char-table"><thead><tr><th style="width:36px">ID</th><th>Character</th><th>Headshot Prompt</th></tr></thead><tbody>' + rows + '</tbody></table>';
+}
+
+function selectScene(num) {
+  selectedScene = num;
+  document.querySelectorAll('.scene-table tbody tr').forEach(r => { const cb = r.querySelector('.scene-check'); r.classList.toggle('selected', cb && cb.value === num); });
+  if (currentRightTab === 'detail') renderDetail();
+}
+
+function renderRight() { currentRightTab === 'detail' ? renderDetail() : renderLog(); }
+
+function renderDetail() {
+  const el = document.getElementById('rightContent');
+  if (!el) return;
+  const s = scenes.find(x => x.sceneNumber === selectedScene);
+  if (!s) { el.innerHTML = '<div class="detail-content"><div class="detail-empty">Select a scene to view details</div></div>'; return; }
+  const tc = s.type === 'AI-VID' ? 'tag-vid' : s.type === 'AI-IMG' ? 'tag-img' : 'tag-stock';
+  const status = sceneStatuses[s.sceneNumber] || 'waiting';
+  const pct = { waiting: 0, 'image-gen': 25, 'image-download': 40, 'video-gen': 60, 'video-download': 80, complete: 100, failed: 100 };
+  const fc = status.startsWith('image') ? 'fill-image' : status.startsWith('video') ? 'fill-video' : status === 'complete' ? 'fill-complete' : status === 'failed' ? 'fill-failed' : '';
+
+  el.innerHTML = '<div class="detail-content">' +
+    '<div style="display:flex;gap:8px;align-items:center"><span class="tag ' + tc + '">' + s.type + '</span><span class="tag-step step-' + status + '">' + status + '</span></div>' +
+    '<div class="detail-title">' + s.sceneName + '</div>' +
+    '<div class="detail-meta">' +
+      '<div class="detail-meta-item"><strong>' + s.endTime.replace('p', ':') + '</strong> end</div>' +
+      '<div class="detail-meta-item"><strong>' + (s.duration || '?') + '</strong>s</div>' +
+      '<div class="detail-meta-item">' + (s.characterNames?.join(', ') || 'No characters') + '</div>' +
+    '</div>' +
+    '<div class="detail-field"><div class="detail-label">Prompt ' + (s.type === 'AI-VID' ? 'First Frame' : 'Image') + '</div>' +
+      '<textarea class="prompt-edit" data-scene="' + s.sceneNumber + '" data-type="image" rows="3">' + (s.imagePrompt || '') + '</textarea></div>' +
+    (s.type === 'AI-VID' ? '<div class="detail-field"><div class="detail-label">Prompt Video (Veo)</div><textarea class="prompt-edit" data-scene="' + s.sceneNumber + '" data-type="video" rows="3">' + (s.videoPrompt || '') + '</textarea></div>' : '') +
+    '<div class="detail-field"><div class="detail-label">Progress</div><div class="progress-bar"><div class="progress-fill ' + fc + '" style="width:' + (pct[status] || 0) + '%"></div></div></div>' +
+  '</div>';
+  el.querySelectorAll('.prompt-edit').forEach(ta => {
+    ta.addEventListener('blur', async () => {
+      try {
+        const b = {}; b[ta.dataset.type === 'image' ? 'imagePrompt' : 'videoPrompt'] = ta.value;
+        const res = await fetch(apiUrl('scenes/' + ta.dataset.scene), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+        if (!res.ok) throw new Error('Failed to save prompt');
+        showToast('Prompt saved', 'success', 2000);
+      } catch (e) { showToast(e.message, 'error'); }
+    });
+  });
+}
+
+function renderLog() {
+  const el = document.getElementById('rightContent');
+  if (!el) return;
+  el.innerHTML = '<div style="display:flex;justify-content:flex-end;padding:4px 8px;background:var(--bg);border-bottom:1px solid var(--border)"><button class="btn-outline btn-sm" onclick="clearLog()">Clear</button></div><div class="log-content" id="logContent"></div>';
+  const lc = document.getElementById('logContent');
+  logEntries.forEach(e => appendLog(lc, e)); lc.scrollTop = lc.scrollHeight;
+}
+
+function addLog(entry) { logEntries.push(entry); if (logEntries.length > 500) logEntries.shift(); const lc = document.getElementById('logContent'); if (lc) { appendLog(lc, entry); lc.scrollTop = lc.scrollHeight; } }
+function appendLog(c, e) { const l = document.createElement('div'); l.className = 'log-entry log-' + e.level; const ts = e.timestamp || new Date().toLocaleTimeString('vi-VN'); l.textContent = '[' + ts + '] ' + (e.scene ? '[#' + e.scene + '] ' : '') + e.message; c.appendChild(l); }
+function clearLog() { logEntries = []; const lc = document.getElementById('logContent'); if (lc) lc.innerHTML = ''; }
+
+function selectAll(c) { document.querySelectorAll('.scene-check').forEach(cb => cb.checked = c); }
+function getSelectedScenes() { return Array.from(document.querySelectorAll('.scene-check:checked')).map(cb => cb.value); }
+
+async function doStart() {
+  const sel = getSelectedScenes(); if (!sel.length) { showAlertDialog('No Selection', 'Select at least one scene'); return; }
+  const btn = document.getElementById('btnStart');
+  await withLoading(btn, async () => {
+    const res = await fetch(apiUrl('start'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scenes: sel, imageOnly: document.getElementById('imageOnly').checked, videoOnly: document.getElementById('videoOnly').checked, resume: document.getElementById('resume').checked, ratio: document.getElementById('ratio').value, genCount: parseInt(document.getElementById('genCount').value) }) });
+    if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed to start'); }
+    showToast('Flow started!', 'success');
+  }, false);
+}
+async function doStop() {
+  const btn = document.getElementById('btnStop');
+  await withLoading(btn, async () => {
+    const res = await fetch(apiUrl('stop'), { method: 'POST' });
+    if (!res.ok) throw new Error('Failed to stop');
+    showToast('Stopping...', 'info');
+  }, false);
+}
+
+function updateState(state) {
+  engineState = state; const b = document.getElementById('statusBadge');
+  if (b) { b.textContent = state.charAt(0).toUpperCase() + state.slice(1); b.className = 'status-badge status-' + state; }
+  const btnStart = document.getElementById('btnStart');
+  const btnStop = document.getElementById('btnStop');
+  if (btnStart) btnStart.disabled = state !== 'idle' || !scenes.length;
+  if (btnStop) btnStop.disabled = state === 'idle';
+  const bs = document.getElementById('bottomStats');
+  if (bs) bs.textContent = state === 'idle' ? 'Ready' : state === 'running' ? 'Running...' : 'Stopping...';
+}
+
+function updateProgress(statuses) {
+  if (!statuses) return; let done = 0, fail = 0;
+  statuses.forEach(s => { sceneStatuses[s.sceneNumber] = s.step; if (s.step === 'complete') done++; if (s.step === 'failed') fail++; });
+  const ps = document.getElementById('progressStats');
+  if (ps) ps.textContent = statuses.length ? done + '/' + statuses.length + ' done' + (fail ? ', ' + fail + ' failed' : '') : '';
+  renderLeft(); if (selectedScene && currentRightTab === 'detail') renderDetail();
+}
+
+async function loadResults() {
+  if (!currentFlowId) return;
+  const res = await fetch(apiUrl('output')); const files = await res.json(); const bar = document.getElementById('resultsBar');
+  if (!bar) return;
+  if (!files.length) { bar.innerHTML = ''; return; }
+  bar.innerHTML = '<h4>Output:</h4><button class="btn-outline btn-sm" onclick="downloadZip()" title="Download all as ZIP">⬇ ZIP</button>' + files.map(f => f.type === 'video' ? '<video src="' + apiUrl('output/' + f.name) + '" class="result-thumb" onclick="showMedia(\'video\',\'' + f.name + '\')" muted></video>' : '<img src="' + apiUrl('output/' + f.name) + '" class="result-thumb" onclick="showMedia(\'image\',\'' + f.name + '\')">').join('');
+}
+
+function downloadZip() {
+  const a = document.createElement('a');
+  a.href = apiUrl('output/zip');
+  a.download = '';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  showToast('Downloading ZIP...', 'info', 2000);
+}
+
+function showMedia(t, n) { const m = document.getElementById('modal'), c = document.getElementById('modalContent'); c.innerHTML = t === 'video' ? '<video src="' + apiUrl('output/' + n) + '" controls autoplay style="max-width:90vw;max-height:85vh"></video>' : '<img src="' + apiUrl('output/' + n) + '">'; m.classList.add('active'); }
+function closeModal() { document.getElementById('modal').classList.remove('active'); document.getElementById('modalContent').innerHTML = ''; }
+
+// ─── Notification & Sound ─────────────────────────────────
+function requestNotificationPermission() {
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+}
+
+function playCompletionSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const playTone = (freq, start, dur) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.value = freq; osc.type = 'sine';
+      gain.gain.setValueAtTime(0.3, ctx.currentTime + start);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + start + dur);
+      osc.start(ctx.currentTime + start);
+      osc.stop(ctx.currentTime + start + dur);
+    };
+    playTone(587.33, 0, 0.3);
+    playTone(880, 0.15, 0.4);
+    playTone(1174.66, 0.3, 0.5);
+  } catch (e) {}
+}
+
+function playErrorSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.value = 220; osc.type = 'sine';
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.6);
+    osc.start(); osc.stop(ctx.currentTime + 0.6);
+  } catch (e) {}
+}
+
+function showBrowserNotification(title, body) {
+  if ('Notification' in window && Notification.permission === 'granted') {
+    const n = new Notification(title, {
+      body,
+      icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🚀</text></svg>',
+    });
+    n.onclick = () => { window.focus(); n.close(); };
+    setTimeout(() => n.close(), 8000);
+  }
+}
+
+function onFlowComplete(result) {
+  playCompletionSound();
+  showBrowserNotification('GG Flow Complete!', result.completed + '/' + result.total + ' scenes completed' + (result.failed ? ', ' + result.failed + ' failed' : ''));
+
+  // Flash title
+  const originalTitle = document.title;
+  const flashInterval = setInterval(() => {
+    document.title = document.title === originalTitle ? '✅ Flow Complete!' : originalTitle;
+  }, 1000);
+  const stopFlash = () => { clearInterval(flashInterval); document.title = originalTitle; window.removeEventListener('focus', stopFlash); };
+  window.addEventListener('focus', stopFlash);
+  setTimeout(stopFlash, 30000);
+}
+
+function onFlowError(msg) {
+  playErrorSound();
+  showBrowserNotification('GG Flow Error', msg);
+}
+
+function connectFlowSSE() {
+  if (eventSource) eventSource.close();
+  eventSource = new EventSource(apiUrl('events'));
+  eventSource.addEventListener('log', e => addLog(JSON.parse(e.data)));
+  eventSource.addEventListener('progress', e => updateProgress(JSON.parse(e.data)));
+  eventSource.addEventListener('state', e => updateState(JSON.parse(e.data).state));
+  eventSource.addEventListener('run-complete', e => { const r = JSON.parse(e.data); addLog({ level: 'success', message: 'Done! ' + r.completed + ' completed, ' + r.failed + ' failed' }); loadResults(); showToast('Done! ' + r.completed + '/' + r.total + ' completed', 'success', 5000); onFlowComplete(r); });
+  eventSource.addEventListener('engine-error', e => { const msg = JSON.parse(e.data); addLog({ level: 'error', message: msg }); showToast(msg, 'error', 5000); onFlowError(msg); });
+  eventSource.onerror = () => { setTimeout(() => { if (currentFlowId) connectFlowSSE(); }, 3000); };
+}
+
+// ─── Global ──────────────────────────────────────────────
+async function doLogin() {
+  try {
+    await fetch('/api/login', { method: 'POST' });
+    showToast('Browser opened for login', 'info');
+    addLog({ level: 'info', message: 'Browser opened. Login and close when done.' });
+  } catch (e) { showToast('Failed to open login', 'error'); }
+}
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+// ─── Custom Dialogs ──────────────────────────────────────
+function showDialog(html) {
+  const overlay = document.getElementById('dialogOverlay');
+  document.getElementById('dialogBox').innerHTML = html;
+  overlay.classList.add('active');
+}
+
+function closeDialog() {
+  document.getElementById('dialogOverlay').classList.remove('active');
+}
+
+function showPromptDialog(title, label, defaultValue, onOk) {
+  showDialog(
+    '<h3>' + esc(title) + '</h3>' +
+    '<label style="font-size:13px;color:var(--text-secondary)">' + esc(label) + '</label>' +
+    '<input type="text" id="dialogInput" value="' + esc(defaultValue || '') + '" placeholder="Enter name...">' +
+    '<div class="dialog-actions">' +
+      '<button class="btn-outline" onclick="closeDialog()">Cancel</button>' +
+      '<button class="btn-primary" id="dialogOk">Create</button>' +
+    '</div>'
+  );
+  const input = document.getElementById('dialogInput');
+  input.focus();
+  input.select();
+  const submit = () => { closeDialog(); onOk(input.value.trim()); };
+  document.getElementById('dialogOk').onclick = submit;
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') closeDialog(); });
+}
+
+function showAlertDialog(title, message) {
+  showDialog(
+    '<h3>' + esc(title) + '</h3>' +
+    '<p>' + esc(message) + '</p>' +
+    '<div class="dialog-actions">' +
+      '<button class="btn-primary" onclick="closeDialog()">OK</button>' +
+    '</div>'
+  );
+}
+
+function showConfirmDialog(title, message, onConfirm) {
+  showDialog(
+    '<h3>' + esc(title) + '</h3>' +
+    '<p>' + esc(message) + '</p>' +
+    '<div class="dialog-actions">' +
+      '<button class="btn-outline" onclick="closeDialog()">Cancel</button>' +
+      '<button class="btn-danger" id="dialogConfirm">Delete</button>' +
+    '</div>'
+  );
+  document.getElementById('dialogConfirm').onclick = () => { closeDialog(); onConfirm(); };
+}
+
+// Boot
+route();
+</script>
+</body>
+</html>
