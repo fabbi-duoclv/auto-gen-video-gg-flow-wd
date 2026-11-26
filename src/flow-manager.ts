@@ -7,6 +7,8 @@ import { CONFIG, getFlowPaths, type FlowPaths } from './config.js';
 import { AutomationEngine, type RunConfig, type SceneStatus, type EngineState } from './engine.js';
 import { readScenes, readCharacters, type SceneData, type CharacterData } from './excel-reader.js';
 import { createFlowPage } from './browser.js';
+import { getTemplate, templateAvailable, templatePath } from './templates.js';
+import { isMerging, mergeClips, type MergeResult } from './merge.js';
 import { copyPhotos, findPhoto, removePhoto, savePhoto, type SavedPhoto } from './flow-photos.js';
 import { addLogListener, removeLogListener, type LogListener, log } from './logger.js';
 
@@ -29,6 +31,8 @@ interface FlowSession {
   sseClients: Set<ServerResponse>;
   logListener: LogListener | null;
   promptOverrides: Map<string, { imagePrompt?: string; videoPrompt?: string }>;
+  /** Đang mở tab/khởi tạo engine (khoảng chờ trước khi engine chuyển sang 'running'). */
+  starting?: boolean;
 }
 
 // ─── FlowManager ─────────────────────────────────────────────
@@ -80,6 +84,23 @@ export class FlowManager {
     this.flows.set(id, session);
     log.success(`Flow created: ${meta.name} (${id})`);
     return meta;
+  }
+
+  /** Tạo flow mới từ mẫu video dựng sẵn: copy Excel mẫu, không cần người dùng đụng tới Excel. */
+  async createFlowFromTemplate(templateId: string, name?: string): Promise<FlowMeta> {
+    const tpl = getTemplate(templateId);
+    if (!tpl) throw new Error(`Mẫu video không tồn tại: ${templateId}`);
+    if (!templateAvailable(tpl)) throw new Error(`Thiếu file mẫu: ${templatePath(tpl)}`);
+
+    const meta = this.createFlow(name || tpl.name);
+    try {
+      await this.uploadExcel(meta.id, readFileSync(templatePath(tpl)));
+    } catch (e) {
+      // Không để lại flow rỗng trong danh sách khi đọc mẫu lỗi
+      await this.deleteFlow(meta.id).catch(() => {});
+      throw e;
+    }
+    return this.flows.get(meta.id)!.meta;
   }
 
   listFlows(): FlowMeta[] {
@@ -300,8 +321,9 @@ export class FlowManager {
     const session = this.flows.get(id);
     if (!session) throw new Error(`Flow ${id} not found`);
 
-    if (session.engine?.getState() === 'running') {
-      throw new Error('Flow is already running');
+    // Các kiểm tra dưới đây chạy đồng bộ (trước await đầu tiên) để không lọt giữa hai request.
+    if (session.starting || (session.engine && session.engine.getState() !== 'idle')) {
+      throw new Error('Flow đang chạy hoặc đang dừng, đợi xong rồi mới chạy lại.');
     }
 
     if (this.getRunningCount() >= CONFIG.MAX_CONCURRENT_FLOWS) {
@@ -311,6 +333,40 @@ export class FlowManager {
     const paths = getFlowPaths(id);
     if (!existsSync(paths.excelPath)) {
       throw new Error('No Excel file uploaded for this flow');
+    }
+    if (isMerging(paths.outputDir)) {
+      throw new Error('Đang ghép video, đợi ghép xong rồi mới chạy tiếp.');
+    }
+
+    session.starting = true;
+    try {
+      await this.launchEngine(id, session, paths, config);
+    } finally {
+      session.starting = false;
+    }
+  }
+
+  /** Ghép clip thành final.mp4. Từ chối khi flow đang chạy/khởi động; khóa ghép được giữ trước await đầu tiên. */
+  mergeFlow(id: string): Promise<MergeResult> {
+    const session = this.flows.get(id);
+    if (!session) throw new Error(`Flow ${id} not found`);
+    if (session.starting || (session.engine && session.engine.getState() !== 'idle')) {
+      throw new Error('Flow đang chạy, dừng hoặc đợi chạy xong rồi mới ghép video.');
+    }
+    return mergeClips(getFlowPaths(id).outputDir, () => this.getScenes(id));
+  }
+
+  private async launchEngine(
+    id: string,
+    session: FlowSession,
+    paths: FlowPaths,
+    config: RunConfig,
+  ): Promise<void> {
+    // Tab của lần chạy trước (nếu còn) không dùng lại: đóng để không dồn tab/RAM.
+    if (session.page) {
+      const old = session.page;
+      session.page = null;
+      await old.close().catch(() => {});
     }
 
     // Create a new browser tab for this flow
@@ -378,6 +434,11 @@ export class FlowManager {
       if (session.logListener) {
         removeLogListener(session.logListener);
         session.logListener = null;
+      }
+      // Chạy xong thì đóng tab Flow của lần này (tab phụ của worker engine đã tự đóng).
+      if (session.page === page) {
+        session.page = null;
+        page.close().catch(() => {});
       }
     });
   }

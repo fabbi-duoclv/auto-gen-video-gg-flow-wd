@@ -8,8 +8,13 @@ import { getFlowPaths } from '../config.js';
 import { FlowManager } from '../flow-manager.js';
 import { openLoginBrowser, type RunConfig } from '../engine.js';
 import { MAX_PHOTO_BYTES, PhotoError } from '../flow-photos.js';
+import { TEMPLATES, templateAvailable } from '../templates.js';
+import { isMerging, type MergeResult } from '../merge.js';
 
 // ─── Helpers ─────────────────────────────────────────────────
+
+const RATIOS = ['16:9', '9:16', '1:1'] as const;
+type Ratio = (typeof RATIOS)[number];
 
 export function json(res: ServerResponse, data: unknown, status = 200): void {
   res.writeHead(status, { 'Content-Type': 'application/json' });
@@ -40,8 +45,36 @@ export function handleCreateFlow(fm: FlowManager) {
   return async (req: IncomingMessage, res: ServerResponse) => {
     const body = await parseBody(req);
     const name = (body.name as string) || '';
-    const meta = fm.createFlow(name);
-    json(res, meta, 201);
+    const template = (body.template as string) || '';
+    try {
+      const meta = template ? await fm.createFlowFromTemplate(template, name || undefined) : fm.createFlow(name);
+      json(res, meta, 201);
+    } catch (e) {
+      json(res, { error: (e as Error).message }, 400);
+    }
+  };
+}
+
+export function handleListTemplates(_req: IncomingMessage, res: ServerResponse): void {
+  json(res, TEMPLATES.map(t => ({ id: t.id, name: t.name, description: t.description, available: templateAvailable(t) })));
+}
+
+export function handleFlowMerge(fm: FlowManager) {
+  return async (_req: IncomingMessage, res: ServerResponse, flowId: string) => {
+    const meta = fm.getFlowMeta(flowId);
+    if (!meta) { json(res, { error: 'Flow not found' }, 404); return; }
+    let job: Promise<MergeResult>;
+    try {
+      job = fm.mergeFlow(flowId); // kiểm tra trạng thái + giữ khóa ghép, không có await xen giữa
+    } catch (e) {
+      json(res, { error: (e as Error).message }, 409);
+      return;
+    }
+    try {
+      json(res, await job);
+    } catch (e) {
+      json(res, { error: (e as Error).message }, 400);
+    }
   };
 }
 
@@ -210,14 +243,28 @@ export function handleFlowUpdateScene(fm: FlowManager) {
 export function handleFlowStart(fm: FlowManager) {
   return async (req: IncomingMessage, res: ServerResponse, flowId: string) => {
     try {
+      if (isMerging(getFlowPaths(flowId).outputDir)) {
+        throw new Error('Đang ghép video, đợi ghép xong rồi mới chạy tiếp.');
+      }
       const body = await parseBody(req);
+      // startFlow kiểm tra lại isMerging đồng bộ, phòng trường hợp ghép bắt đầu trong lúc đọc body.
+      const ratio = body.ratio ?? '9:16';
+      if (!RATIOS.includes(ratio as Ratio)) {
+        json(res, { error: `Tỉ lệ khung không hợp lệ: ${String(ratio)} (chỉ nhận ${RATIOS.join(', ')})` }, 400);
+        return;
+      }
+      if (body.scenes !== undefined && !(Array.isArray(body.scenes) && body.scenes.every((s) => typeof s === 'string'))) {
+        json(res, { error: 'Danh sách cảnh không hợp lệ' }, 400);
+        return;
+      }
       const config: RunConfig = {
         scenes: body.scenes as string[] | undefined,
-        imageOnly: body.imageOnly as boolean | undefined,
-        videoOnly: body.videoOnly as boolean | undefined,
-        resume: body.resume as boolean | undefined,
-        ratio: (body.ratio as '16:9' | '9:16' | '1:1') || '16:9',
-        genCount: (body.genCount as number) || 1,
+        imageOnly: body.imageOnly === true,
+        videoOnly: body.videoOnly === true,
+        resume: body.resume === true,
+        ratio: ratio as Ratio,
+        // Mỗi cảnh chỉ tải về 1 kết quả, nên luôn gen 1 (gen 2 chỉ tốn thêm credit).
+        genCount: 1,
       };
       await fm.startFlow(flowId, config);
       json(res, { ok: true }, 202);

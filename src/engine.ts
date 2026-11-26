@@ -328,11 +328,21 @@ export class AutomationEngine extends EventEmitter {
         }
 
         try {
+          const needVideo = scene.type === 'AI-VID' && !config.imageOnly && !!scene.videoPrompt &&
+            !(config.resume && isVideoDone(progress, scene.sceneNumber));
+          const skipImage = !!config.videoOnly || (!!config.resume && isImageDone(progress, scene.sceneNumber));
+          // Mỗi lần chạy là một project Flow mới, ảnh cũ của cảnh không có trong đó. Video được làm bằng
+          // "Tạo ảnh động" trên ảnh mới nhất của project, nên bỏ qua bước ảnh sẽ làm động nhầm ảnh khác
+          // (thường là ảnh tham chiếu cô dâu/chú rể). Cần video ⇒ luôn tạo lại ảnh trong project này.
+          if (skipImage && needVideo && scene.imagePrompt) {
+            this.log.scene(scene.sceneNumber, 'Cần làm video nên tạo lại ảnh cảnh trong project này (ảnh lần trước không dùng được cho "Tạo ảnh động")');
+          }
+
           // Image (for both AI-IMG and AI-VID)
-          if (!config.videoOnly && !(config.resume && isImageDone(progress, scene.sceneNumber))) {
+          if (!skipImage || needVideo) {
             if (scene.imagePrompt) {
               this.updateStatus(scene.sceneNumber, 'image-gen');
-              const imgPath = await generateImage(worker.flowPage, scene, worker.projectUrl, refIndices, worker.totalRefs, this.outputDir, this.log);
+              const imgPath = await generateImage(worker.flowPage, scene, worker.projectUrl, refIndices, worker.totalRefs, this.outputDir, this.log, config.ratio || '16:9');
               updateSceneProgress(progress, scene.sceneNumber, {
                 imageGenerated: true,
                 imagePath: imgPath,
@@ -344,16 +354,17 @@ export class AutomationEngine extends EventEmitter {
           if (this.isAborted()) break;
 
           // Video (only for AI-VID)
-          if (scene.type === 'AI-VID' && !config.imageOnly && !(config.resume && isVideoDone(progress, scene.sceneNumber))) {
-            if (scene.videoPrompt) {
-              this.updateStatus(scene.sceneNumber, 'video-gen');
-              const vidPath = await generateVideo(worker.flowPage, scene, worker.projectUrl, refIndices, worker.totalRefs, this.outputDir, this.log);
-              updateSceneProgress(progress, scene.sceneNumber, {
-                videoGenerated: true,
-                videoPath: vidPath,
-              }, this.progressFile);
-              this.updateStatus(scene.sceneNumber, 'video-download', { videoPath: vidPath });
+          if (needVideo) {
+            if (!scene.imagePrompt) {
+              throw new Error('Cảnh làm video nhưng không có prompt ảnh: không có ảnh để "Tạo ảnh động"');
             }
+            this.updateStatus(scene.sceneNumber, 'video-gen');
+            const vidPath = await generateVideo(worker.flowPage, scene, worker.projectUrl, refIndices, worker.totalRefs, this.outputDir, this.log, config.ratio || '16:9');
+            updateSceneProgress(progress, scene.sceneNumber, {
+              videoGenerated: true,
+              videoPath: vidPath,
+            }, this.progressFile);
+            this.updateStatus(scene.sceneNumber, 'video-download', { videoPath: vidPath });
           }
 
           completed++;
