@@ -7,6 +7,7 @@ import { CONFIG, getFlowPaths, type FlowPaths } from './config.js';
 import { AutomationEngine, type RunConfig, type SceneStatus, type EngineState } from './engine.js';
 import { readScenes, readCharacters, type SceneData, type CharacterData } from './excel-reader.js';
 import { createFlowPage } from './browser.js';
+import { getTemplate, templateAvailable, templatePath } from './templates.js';
 import { copyPhotos, findPhoto, removePhoto, savePhoto, type SavedPhoto } from './flow-photos.js';
 import { addLogListener, removeLogListener, type LogListener, log } from './logger.js';
 
@@ -80,6 +81,23 @@ export class FlowManager {
     this.flows.set(id, session);
     log.success(`Flow created: ${meta.name} (${id})`);
     return meta;
+  }
+
+  /** Tạo flow mới từ mẫu video dựng sẵn: copy Excel mẫu, không cần người dùng đụng tới Excel. */
+  async createFlowFromTemplate(templateId: string, name?: string): Promise<FlowMeta> {
+    const tpl = getTemplate(templateId);
+    if (!tpl) throw new Error(`Mẫu video không tồn tại: ${templateId}`);
+    if (!templateAvailable(tpl)) throw new Error(`Thiếu file mẫu: ${templatePath(tpl)}`);
+
+    const meta = this.createFlow(name || tpl.name);
+    try {
+      await this.uploadExcel(meta.id, readFileSync(templatePath(tpl)));
+    } catch (e) {
+      // Không để lại flow rỗng trong danh sách khi đọc mẫu lỗi
+      await this.deleteFlow(meta.id).catch(() => {});
+      throw e;
+    }
+    return this.flows.get(meta.id)!.meta;
   }
 
   listFlows(): FlowMeta[] {

@@ -2,7 +2,8 @@ import { resolve, join } from 'path';
 
 export const CONFIG = {
   FLOW_URL: 'https://labs.google/fx/vi/tools/flow',
-  EXCEL_PATH: resolve('./222.xlsx'),
+  EXCEL_PATH: resolve('./wedding-video/excel/ngu-kiep.xlsx'),
+  TEMPLATES_DIR: resolve('./wedding-video/excel'),
   OUTPUT_DIR: resolve('./output'),
   BROWSER_DATA_DIR: resolve('./browser-profile'),
   PROGRESS_FILE: resolve('./progress.json'),

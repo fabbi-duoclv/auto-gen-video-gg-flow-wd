@@ -450,20 +450,45 @@ function renderFlowList() {
     <div class="flow-grid">${cards}</div></div>`;
 }
 
-function createFlow() {
-  showPromptDialog('Create Flow', 'Flow name:', '', async (name) => {
+async function createFlow() {
+  let templates = [];
+  try { templates = await (await fetch('/api/templates')).json(); } catch { /* hiện lỗi bên dưới */ }
+  templates = templates.filter(t => t.available);
+  if (!templates.length) { showToast('Không tải được danh sách mẫu video', 'error'); return; }
+
+  showDialog(
+    '<h3>Tạo video mới</h3>' +
+    '<label style="font-size:13px;color:var(--text-secondary)">Chọn kiểu video:</label>' +
+    '<div id="tplList" style="display:flex;flex-direction:column;gap:8px;margin:8px 0 12px">' +
+    templates.map((t, i) =>
+      '<label style="display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid var(--border,#ccc);border-radius:8px;cursor:pointer">' +
+      '<input type="radio" name="tpl" value="' + esc(t.id) + '"' + (i === 0 ? ' checked' : '') + ' style="margin-top:3px">' +
+      '<span><strong>' + esc(t.name) + '</strong><br><span style="font-size:12px;color:var(--text-secondary)">' + esc(t.description) + '</span></span>' +
+      '</label>').join('') +
+    '</div>' +
+    '<label style="font-size:13px;color:var(--text-secondary)">Tên video (tuỳ chọn):</label>' +
+    '<input type="text" id="dialogInput" placeholder="VD: Video cưới A &amp; B">' +
+    '<div class="dialog-actions">' +
+      '<button class="btn-outline" onclick="closeDialog()">Huỷ</button>' +
+      '<button class="btn-primary" id="dialogOk">Tạo</button>' +
+    '</div>'
+  );
+  document.getElementById('dialogOk').onclick = async () => {
+    const template = (document.querySelector('input[name=tpl]:checked') || {}).value;
+    const name = document.getElementById('dialogInput').value.trim();
+    closeDialog();
     try {
       const res = await fetch(API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name || undefined }),
+        body: JSON.stringify({ name: name || undefined, template }),
       });
-      if (!res.ok) throw new Error('Failed to create flow');
       const meta = await res.json();
-      showToast('Flow created!', 'success');
+      if (!res.ok) throw new Error(meta.error || 'Không tạo được video');
+      showToast('Đã tạo. Tiếp theo: tab Characters → upload ảnh cô dâu/chú rể', 'success', 5000);
       navigate('/flow/' + meta.id);
     } catch (e) { showToast(e.message, 'error'); }
-  });
+  };
 }
 
 async function cloneFlow(id) {
@@ -525,8 +550,7 @@ async function renderFlowView() {
         <span id="statusBadge" class="status-badge status-${esc(flowMeta.status)}">${esc(statusLabel(flowMeta.status))}</span>
       </div>
       <div class="header-actions">
-        <button class="btn-import" onclick="document.getElementById('fileInput').click()">Import Excel</button>
-        <input type="file" id="fileInput" accept=".xlsx,.xls" onchange="uploadExcel(this)">
+        <button class="btn-outline" id="btnMerge" onclick="mergeVideo()" title="Ghép các clip đã tạo thành 1 video final.mp4">Ghép video</button>
         <button class="btn-primary" id="btnStart" onclick="doStart()" disabled>Start</button>
         <button class="btn-danger" id="btnStop" onclick="doStop()" disabled>Stop</button>
       </div>
@@ -539,7 +563,7 @@ async function renderFlowView() {
         <span class="stat" id="sumTypes"></span>
       </div>
       <div class="settings">
-        <label class="field">Ratio <select id="ratio"><option value="16:9" selected>16:9</option><option value="9:16">9:16</option><option value="1:1">1:1</option></select></label>
+        <label class="field">Ratio <select id="ratio"><option value="16:9">16:9</option><option value="9:16" selected>9:16</option><option value="1:1">1:1</option></select></label>
         <label class="field">Outputs <select id="genCount"><option value="1" selected>1 per scene</option><option value="2">2 per scene</option></select></label>
         <label class="toggle"><input type="checkbox" id="imageOnly"><span>Images only</span></label>
         <label class="toggle"><input type="checkbox" id="videoOnly"><span>Videos only</span></label>
@@ -565,31 +589,13 @@ async function renderFlowView() {
       </aside>
     </div>
     <div class="results-bar" id="resultsBar"></div>
-    <footer class="statusbar"><span id="bottomStats">Import an Excel file to start</span><span class="meter" id="progressStats"></span></footer>
+    <footer class="statusbar"><span id="bottomStats">Upload ảnh ở tab Characters rồi bấm Start</span><span class="meter" id="progressStats"></span></footer>
   `;
 
   await loadFlowData();
   connectFlowSSE();
   requestNotificationPermission();
   loadResults();
-}
-
-async function uploadExcel(input) {
-  const f = input.files[0]; if (!f) return;
-  const btn = document.querySelector('.btn-import');
-  await withLoading(btn, async () => {
-    const res = await fetch(apiUrl('upload'), { method: 'POST', body: await f.arrayBuffer() });
-    const data = await res.json();
-    input.value = '';
-    if (!res.ok) {
-      const msg = data.details ? data.details.join('\n') : data.error;
-      showAlertDialog('Import Failed', msg);
-      return;
-    }
-    showToast('Excel imported successfully', 'success');
-    pickedInit = false;
-    await loadFlowData();
-  });
 }
 
 async function loadFlowData() {
@@ -606,7 +612,7 @@ async function loadFlowData() {
 }
 
 function emptyScenesHtml() {
-  return '<div class="empty-state"><div class="empty-mark">' + ICON_FILM + '</div><h2>No scenes yet</h2><p>Import the Excel file to load its scenes and characters.</p><button class="btn-import" onclick="document.getElementById(\'fileInput\').click()">Import Excel</button></div>';
+  return '<div class="empty-state"><div class="empty-mark">' + ICON_FILM + '</div><h2>Chưa có cảnh nào</h2><p>Flow này không có mẫu video. Quay lại trang chủ, bấm <b>New flow</b> và chọn kiểu video.</p><button class="btn-outline" onclick="navigate(\'/\')">Về trang chủ</button></div>';
 }
 
 function renderSummary() {
@@ -907,10 +913,30 @@ function updateProgress(statuses) {
 
 async function loadResults() {
   if (!currentFlowId) return;
-  const res = await fetch(apiUrl('output')); const files = await res.json(); const bar = document.getElementById('resultsBar');
+  const res = await fetch(apiUrl('output')); let files = await res.json(); const bar = document.getElementById('resultsBar');
   if (!bar) return;
   if (!files.length) { bar.innerHTML = ''; return; }
-  bar.innerHTML = '<h4>Output:</h4><button class="btn-outline btn-sm" onclick="downloadZip()" title="Download all as ZIP">⬇ ZIP</button>' + files.map(f => f.type === 'video' ? '<video src="' + apiUrl('output/' + f.name) + '" class="result-thumb" onclick="showMedia(\'video\',\'' + f.name + '\')" muted></video>' : '<img src="' + apiUrl('output/' + f.name) + '" class="result-thumb" onclick="showMedia(\'image\',\'' + f.name + '\')">').join('');
+  const final = files.find(f => f.name === 'final.mp4');
+  const finalHtml = final
+    ? '<a class="btn-primary btn-sm" href="' + apiUrl('output/final.mp4') + '" download="video-final.mp4" style="text-decoration:none">⬇ Tải video hoàn chỉnh</a>' +
+      '<video src="' + apiUrl('output/final.mp4') + '?t=' + Date.parse(final.modified) + '" class="result-thumb" onclick="showMedia(\'video\',\'final.mp4\')" muted></video>'
+    : '';
+  files = files.filter(f => f.name !== 'final.mp4');
+  bar.innerHTML = '<h4>Output:</h4>' + finalHtml + '<button class="btn-outline btn-sm" onclick="downloadZip()" title="Download all as ZIP">⬇ ZIP</button>' + files.map(f => f.type === 'video' ? '<video src="' + apiUrl('output/' + f.name) + '" class="result-thumb" onclick="showMedia(\'video\',\'' + f.name + '\')" muted></video>' : '<img src="' + apiUrl('output/' + f.name) + '" class="result-thumb" onclick="showMedia(\'image\',\'' + f.name + '\')">').join('');
+}
+
+async function mergeVideo() {
+  const btn = document.getElementById('btnMerge');
+  await withLoading(btn, async () => {
+    try {
+      const res = await fetch(apiUrl('merge'), { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Ghép video thất bại');
+      showToast('Đã ghép ' + data.clips + ' clip (~' + data.seconds + ' giây)', 'success', 5000);
+      await loadResults();
+      showMedia('video', 'final.mp4');
+    } catch (e) { showToast(e.message, 'error', 6000); }
+  });
 }
 
 function downloadZip() {

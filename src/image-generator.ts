@@ -15,6 +15,7 @@ export async function generateImage(
   totalRefs: number = 0,
   outputDir?: string,
   logger?: FlowLogger,
+  ratio: '16:9' | '9:16' | '1:1' = '16:9',
 ): Promise<string> {
   const log = logger || globalLog;
   const dir = outputDir || CONFIG.OUTPUT_DIR;
@@ -25,7 +26,7 @@ export async function generateImage(
   for (let attempt = 1; attempt <= MAX_GEN_RETRIES; attempt++) {
     try {
       log.scene(scene.sceneNumber, `Generating image (attempt ${attempt}/${MAX_GEN_RETRIES}): ${scene.imagePrompt.substring(0, 60)}...`);
-      await flowPage.configureModel('image', '16:9', 1);
+      await flowPage.configureModel('image', ratio, 1);
       if (refIndices.length > 0) {
         await flowPage.attachReferences(refIndices, totalRefs);
       }

@@ -1,12 +1,14 @@
 import { type IncomingMessage, type ServerResponse } from 'http';
 import { readdirSync, statSync, createReadStream, existsSync } from 'fs';
-import { join, extname } from 'path';
+import { join, extname, basename } from 'path';
 import ExcelJS from 'exceljs';
 import archiver from 'archiver';
 import { getFlowPaths } from '../config.js';
 import { FlowManager } from '../flow-manager.js';
 import { openLoginBrowser, type RunConfig } from '../engine.js';
 import { MAX_PHOTO_BYTES, PhotoError } from '../flow-photos.js';
+import { TEMPLATES, templateAvailable } from '../templates.js';
+import { mergeClips, isMerging } from '../merge.js';
 
 // ─── Helpers ─────────────────────────────────────────────────
 
@@ -39,8 +41,36 @@ export function handleCreateFlow(fm: FlowManager) {
   return async (req: IncomingMessage, res: ServerResponse) => {
     const body = await parseBody(req);
     const name = (body.name as string) || '';
-    const meta = fm.createFlow(name);
-    json(res, meta, 201);
+    const template = (body.template as string) || '';
+    try {
+      const meta = template ? await fm.createFlowFromTemplate(template, name || undefined) : fm.createFlow(name);
+      json(res, meta, 201);
+    } catch (e) {
+      json(res, { error: (e as Error).message }, 400);
+    }
+  };
+}
+
+export function handleListTemplates(_req: IncomingMessage, res: ServerResponse): void {
+  json(res, TEMPLATES.map(t => ({ id: t.id, name: t.name, description: t.description, available: templateAvailable(t) })));
+}
+
+export function handleFlowMerge(fm: FlowManager) {
+  return async (_req: IncomingMessage, res: ServerResponse, flowId: string) => {
+    const meta = fm.getFlowMeta(flowId);
+    if (!meta) { json(res, { error: 'Flow not found' }, 404); return; }
+    const state = fm.getFlow(flowId)?.engine?.getState();
+    if (state && state !== 'idle') {
+      json(res, { error: 'Flow đang chạy, dừng hoặc đợi chạy xong rồi mới ghép video.' }, 409);
+      return;
+    }
+    try {
+      const scenes = await fm.getScenes(flowId);
+      const result = await mergeClips(getFlowPaths(flowId).outputDir, scenes);
+      json(res, result);
+    } catch (e) {
+      json(res, { error: (e as Error).message }, 400);
+    }
   };
 }
 
@@ -209,6 +239,9 @@ export function handleFlowUpdateScene(fm: FlowManager) {
 export function handleFlowStart(fm: FlowManager) {
   return async (req: IncomingMessage, res: ServerResponse, flowId: string) => {
     try {
+      if (isMerging(getFlowPaths(flowId).outputDir)) {
+        throw new Error('Đang ghép video, đợi ghép xong rồi mới chạy tiếp.');
+      }
       const body = await parseBody(req);
       const config: RunConfig = {
         scenes: body.scenes as string[] | undefined,
@@ -283,7 +316,7 @@ export function handleFlowOutputFile(fm: FlowManager) {
     if (!meta) { res.writeHead(404); res.end('Flow not found'); return; }
 
     const paths = getFlowPaths(flowId);
-    const filePath = join(paths.outputDir, filename);
+    const filePath = join(paths.outputDir, basename(filename));
     try {
       const stat = statSync(filePath);
       const ext = extname(filename).toLowerCase();
@@ -297,6 +330,8 @@ export function handleFlowOutputFile(fm: FlowManager) {
       res.writeHead(200, {
         'Content-Type': mimeTypes[ext] || 'application/octet-stream',
         'Content-Length': stat.size,
+        // final.mp4 bị ghi đè mỗi lần ghép lại: bắt trình duyệt tải bản mới
+        'Cache-Control': 'no-cache',
       });
       createReadStream(filePath).pipe(res);
     } catch {

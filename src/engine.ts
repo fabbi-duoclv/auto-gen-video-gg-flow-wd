@@ -332,7 +332,7 @@ export class AutomationEngine extends EventEmitter {
           if (!config.videoOnly && !(config.resume && isImageDone(progress, scene.sceneNumber))) {
             if (scene.imagePrompt) {
               this.updateStatus(scene.sceneNumber, 'image-gen');
-              const imgPath = await generateImage(worker.flowPage, scene, worker.projectUrl, refIndices, worker.totalRefs, this.outputDir, this.log);
+              const imgPath = await generateImage(worker.flowPage, scene, worker.projectUrl, refIndices, worker.totalRefs, this.outputDir, this.log, config.ratio || '16:9');
               updateSceneProgress(progress, scene.sceneNumber, {
                 imageGenerated: true,
                 imagePath: imgPath,
@@ -347,7 +347,7 @@ export class AutomationEngine extends EventEmitter {
           if (scene.type === 'AI-VID' && !config.imageOnly && !(config.resume && isVideoDone(progress, scene.sceneNumber))) {
             if (scene.videoPrompt) {
               this.updateStatus(scene.sceneNumber, 'video-gen');
-              const vidPath = await generateVideo(worker.flowPage, scene, worker.projectUrl, refIndices, worker.totalRefs, this.outputDir, this.log);
+              const vidPath = await generateVideo(worker.flowPage, scene, worker.projectUrl, refIndices, worker.totalRefs, this.outputDir, this.log, config.ratio || '16:9');
               updateSceneProgress(progress, scene.sceneNumber, {
                 videoGenerated: true,
                 videoPath: vidPath,

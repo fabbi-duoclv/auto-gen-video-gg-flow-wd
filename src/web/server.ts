@@ -26,6 +26,8 @@ import {
   handleFlowOutputZip,
   handleFlowOutputFile,
   handleLogin,
+  handleListTemplates,
+  handleFlowMerge,
 } from './api.js';
 
 const PORT = 3001;
@@ -52,6 +54,11 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     // segments[0] = 'api', segments[1] = 'flows', segments[2] = flowId, etc.
 
     // ─── Flow API routes (/api/flows/...) ────────────────
+
+    // GET /api/templates — mẫu video dựng sẵn
+    if (path === '/api/templates' && method === 'GET') {
+      return handleListTemplates(req, res);
+    }
 
     if (segments[0] === 'api' && segments[1] === 'flows') {
       const flowId = segments[2];
@@ -125,6 +132,11 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         // GET /api/flows/:id/status
         if (action === 'status' && method === 'GET') {
           return handleFlowStatus(fm)(req, res, flowId);
+        }
+
+        // POST /api/flows/:id/merge — ghép các clip thành final.mp4
+        if (action === 'merge' && method === 'POST') {
+          return await handleFlowMerge(fm)(req, res, flowId);
         }
 
         // GET /api/flows/:id/output

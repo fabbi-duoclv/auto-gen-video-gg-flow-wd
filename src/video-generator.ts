@@ -15,6 +15,7 @@ export async function generateVideo(
   totalRefs: number = 0,
   outputDir?: string,
   logger?: FlowLogger,
+  ratio: '16:9' | '9:16' | '1:1' = '16:9',
 ): Promise<string> {
   const log = logger || globalLog;
   const dir = outputDir || CONFIG.OUTPUT_DIR;
@@ -26,7 +27,7 @@ export async function generateVideo(
     try {
       log.scene(scene.sceneNumber, `Generating video (attempt ${attempt}/${MAX_GEN_RETRIES}): ${scene.videoPrompt.substring(0, 60)}...`);
       await flowPage.clickAnimate();
-      await flowPage.configureModel('video', '16:9', 1, 'fast');
+      await flowPage.configureModel('video', ratio, 1, 'fast');
       if (refIndices.length > 0) {
         await flowPage.attachReferences(refIndices, totalRefs);
       }

@@ -16,3 +16,6 @@ page.html
 
 # Ảnh thật cô dâu/chú rể upload qua web UI (dữ liệu cá nhân)
 flows/*/photos/
+# Dữ liệu chạy của từng video (mẫu, clip, final.mp4): không commit
+flows/
+__pycache__/
