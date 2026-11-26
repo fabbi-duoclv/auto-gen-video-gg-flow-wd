@@ -1,6 +1,12 @@
 import { createReadStream, statSync } from 'fs';
+import { pipeline } from 'stream';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { basename } from 'path';
+
+/** Gửi tệp qua `pipeline`: lỗi đọc (tệp bị xóa giữa chừng) không làm sập server, và khi trình duyệt hủy request thì luồng đọc + fd được đóng. */
+function send(path: string, res: ServerResponse, opts?: { start: number; end: number }): void {
+  pipeline(createReadStream(path, opts), res, () => { /* lỗi/hủy đã được dọn bởi pipeline */ });
+}
 
 /** Phục vụ tệp có hỗ trợ Range (cần cho <video>/<audio> tua được trong trình duyệt). */
 export function serveFile(req: IncomingMessage, res: ServerResponse, path: string, mime: string, downloadName?: string): void {
@@ -20,9 +26,9 @@ export function serveFile(req: IncomingMessage, res: ServerResponse, path: strin
     else if (isNaN(end) || end >= size) end = size - 1;
     if (start > end || start >= size) { res.writeHead(416, { 'Content-Range': `bytes */${size}` }); res.end(); return; }
     res.writeHead(206, { ...headers, 'Content-Range': `bytes ${start}-${end}/${size}`, 'Content-Length': end - start + 1 });
-    createReadStream(path, { start, end }).pipe(res);
+    send(path, res, { start, end });
     return;
   }
   res.writeHead(200, { ...headers, 'Content-Length': size });
-  createReadStream(path).pipe(res);
+  send(path, res);
 }

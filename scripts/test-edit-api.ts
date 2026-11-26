@@ -80,8 +80,14 @@ try {
   const pr = (await j(await api(`/${id}/edit`))).project;
   pr.lyrics = ly.lines; pr.chapterGrades[Object.keys(pr.chapterGrades)[0]] = 'lut:Phim_co'; pr.resolution = 720;
   assert.equal((await api(`/${id}/edit`, { method: 'PUT', body: JSON.stringify(pr) })).status, 200);
-  r = await api(`/${id}/edit/render`, { method: 'POST', body: JSON.stringify({ preview: true }) }); assert.equal(r.status, 202, JSON.stringify(await r.clone().json()));
+  // hai yêu cầu dựng gần như đồng thời (bấm đúp): đúng một cái được chạy, cái kia 409 (trước đây cả hai cùng chạy và ghi đè một tệp .part)
+  const startR = () => api(`/${id}/edit/render`, { method: 'POST', body: JSON.stringify({ preview: true }) });
+  const both = await Promise.all([startR(), startR()]);
+  assert.deepEqual(both.map((x) => x.status).sort(), [202, 409], 'chỉ một bản dựng được chạy khi hai yêu cầu đến cùng lúc');
   r = await api(`/${id}/edit/render`, { method: 'POST', body: '{}' }); assert.equal(r.status, 409, 'không cho chạy hai bản dựng cùng lúc');
+  // đang dựng thì không cho đổi nhạc/LUT (ffmpeg đang đọc các tệp này)
+  r = await api(`/${id}/edit/music?name=b.mp3`, { method: 'POST', body: readFileSync('/tmp/claude-0/t-music.mp3') }); assert.equal(r.status, 409);
+  r = await api(`/${id}/edit/lut?name=x`, { method: 'POST', body: cube }); assert.equal(r.status, 409);
   let s: any; for (let i = 0; i < 120; i++) { await new Promise((x) => setTimeout(x, 500)); s = await j(await api(`/${id}/edit/render`)); if (s.state !== 'running') break; }
   assert.equal(s.state, 'done', JSON.stringify(s)); assert.equal(s.file, '_preview.mp4'); assert.equal(s.percent, 100);
   r = await retry(`${BASE}/api/flows/${id}/edit/final/_preview.mp4`, { headers: { range: 'bytes=0-1023' } }); assert.equal(r.status, 206); assert.equal(r.headers.get('content-type'), 'video/mp4');

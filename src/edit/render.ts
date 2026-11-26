@@ -4,7 +4,7 @@ import { tmpdir } from 'os';
 import { basename, dirname, join } from 'path';
 import type { ClipInfo, EditProject, EditItem } from './types.js';
 import { resolveFfmpeg } from './ffmpeg.js';
-import { TL, type TLItem } from './timeline.js';
+import { TL, type TLItem, type TLRow } from './timeline.js';
 import { gradeFilter } from './grades.js';
 import { buildAss } from './ass.js';
 
@@ -27,6 +27,9 @@ export interface Analysis {
 }
 
 const f3 = (n: number) => n.toFixed(3);
+
+/** Clip có đúng khổ ngang 16:9 không (sai số 3%). Không đọc được kích thước thì coi là có. */
+const isLandscape169 = (c: ClipInfo) => !(c.width > 0 && c.height > 0) || Math.abs(c.width / c.height - 16 / 9) / (16 / 9) <= 0.03;
 
 export function canvasSize(project: EditProject): { W: number; H: number; PH: number } {
   const res = project.resolution;
@@ -54,6 +57,10 @@ export function analyze(project: EditProject, clips: Map<string, ClipInfo>, musi
     if (x.skip || x.kind !== 'shot' || x.missing) return;
     if (rows[i].use < x.use - 0.05) warnings.push(`${x.src.code}: clip chỉ còn ${rows[i].use.toFixed(1)} s từ điểm bắt đầu, ngắn hơn ${x.use.toFixed(1)} s đã đặt.`);
   });
+  if (project.canvas === 'pic') {
+    const odd = shots.filter((x) => !x.missing && !isLandscape169(clips.get(x.src.sceneNumber)!));
+    if (odd.length) warnings.push(`${odd.length} clip không phải khổ 16:9 (${odd.slice(0, 4).map((x) => x.src.code).join(', ')}${odd.length > 4 ? '…' : ''}): ở bố cục "khung hình 16:9" sẽ có viền đen hai bên thay vì kéo giãn. Dùng bố cục "9:16 phủ kín" nếu muốn lấp đầy.`);
+  }
   if (project.items.some((i) => i.kind === 'title' && !i.skip) && !(project.plateScene && clips.has(project.plateScene))) {
     warnings.push('Chưa có clip khói (nền thẻ chương): thẻ chương sẽ dùng nền đen.');
   }
@@ -79,6 +86,19 @@ export function planRender(ctx: RenderCtx, musicDuration = 0): RenderPlan {
   const analysis = analyze(project, clips, musicDuration);
 
   const workDir = mkdtempSync(join(tmpdir(), 'ggflow-render-'));
+  try {
+    return buildPlan(ctx, workDir, { W, H, PH, F, tl, rows, total, vis, analysis });
+  } catch (e) {
+    rmSync(workDir, { recursive: true, force: true });
+    throw e;
+  }
+}
+
+interface PlanInput { W: number; H: number; PH: number; F: number; tl: ReturnType<typeof toTLItems>; rows: TLRow[]; total: number; vis: number[]; analysis: Analysis }
+
+function buildPlan(ctx: RenderCtx, workDir: string, pin: PlanInput): RenderPlan {
+  const { project, clips } = ctx;
+  const { W, H, PH, F, tl, rows, total, vis, analysis } = pin;
   mkdirSync(join(workDir, 'fonts'));
   for (const f of existsSync(ctx.fontsDir) ? readdirSync(ctx.fontsDir) : []) if (/\.(ttf|otf)$/i.test(f)) copyFileSync(join(ctx.fontsDir, f), join(workDir, 'fonts', f));
   const lutDir = join(ctx.editDir, 'luts');
@@ -94,8 +114,14 @@ export function planRender(ctx: RenderCtx, musicDuration = 0): RenderPlan {
   const plate = project.plateScene ? clips.get(project.plateScene) : undefined;
   const black = (use: number) => `color=c=black:s=${W}x${H}:r=${F}:d=${f3(use)},setsar=1,format=yuv420p`;
 
-  const fit = (): { pre: string; post: string } => {
-    if (project.canvas === 'pic') return { pre: `scale=${W}:${PH}:flags=lanczos`, post: `pad=${W}:${H}:0:${(H - PH) / 2}:black` };
+  const fit = (clip: ClipInfo): { pre: string; post: string } => {
+    if (project.canvas === 'pic') {
+      // Clip 16:9 lấp đầy khung; clip khổ khác giữ tỉ lệ và chừa viền đen (không kéo giãn mặt người).
+      const pre = isLandscape169(clip)
+        ? `scale=${W}:${PH}:flags=lanczos`
+        : `scale=${W}:${PH}:force_original_aspect_ratio=decrease:flags=lanczos,pad=${W}:${PH}:(ow-iw)/2:(oh-ih)/2:black`;
+      return { pre, post: `pad=${W}:${H}:0:${(H - PH) / 2}:black` };
+    }
     if (project.canvas === 'full') return { pre: `scale=${W}:${H}:force_original_aspect_ratio=increase:flags=lanczos,crop=${W}:${H}`, post: '' };
     return { pre: `scale=${W}:${H}:force_original_aspect_ratio=decrease:flags=lanczos`, post: `pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:black` };
   };
@@ -114,7 +140,7 @@ export function planRender(ctx: RenderCtx, musicDuration = 0): RenderPlan {
       const clip = clips.get(it.src.sceneNumber)!;
       const k = inputOf(clip.path);
       const start = Math.min(it.src.start, Math.max(0, clip.duration - use));
-      const { pre, post } = fit();
+      const { pre, post } = fit(clip);
       const grade = gradeFilter(project.chapterGrades[it.src.chapter] ?? 'neutral');
       parts.push(`[${k}:v]trim=start=${f3(start)}:duration=${f3(use)},setpts=PTS-STARTPTS,fps=${F},${pre},setsar=1${grade ? ',' + grade : ''}${post ? ',' + post : ''},format=yuv420p[v${i}]`);
     }
@@ -163,6 +189,9 @@ export function planRender(ctx: RenderCtx, musicDuration = 0): RenderPlan {
   return { args, total, width: ctx.preview ? Math.trunc(W / 4) * 2 : W, height: ctx.preview ? Math.trunc(H / 4) * 2 : H, workDir, analysis };
 }
 
+/** Xóa thư mục làm việc tạm của một kế hoạch dựng chưa (hoặc không thể) chạy. */
+export function cleanupPlan(plan: RenderPlan): void { rmSync(plan.workDir, { recursive: true, force: true }); }
+
 export interface RenderHandle { promise: Promise<void>; cancel(): void }
 
 /** Chạy ffmpeg, báo tiến độ 0..1 qua onProgress. Luôn dọn thư mục tạm. Hủy thì xóa tệp dở. */
@@ -185,7 +214,7 @@ export function runRender(plan: RenderPlan, outPath: string, onProgress: (p: num
       }
     });
     proc.stderr!.on('data', (d) => { err = (err + d).slice(-4000); });
-    proc.on('error', (e) => reject(e));
+    proc.on('error', (e) => { rmSync(plan.workDir, { recursive: true, force: true }); reject(e); });
     proc.on('close', (code) => {
       rmSync(plan.workDir, { recursive: true, force: true });
       if (cancelled) { rmSync(outPath, { force: true }); return reject(new Error('Đã hủy')); }

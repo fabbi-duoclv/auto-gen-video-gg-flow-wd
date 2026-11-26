@@ -19,6 +19,7 @@ interface Timeline {
   layout(items: TLItem[]): { total: number; rows: TLRow[] };
   indexAt(items: TLItem[], rows: TLRow[], t: number): number;
   snapToLyrics<T extends TLItem>(items: T[], lyrics: { s: number }[], opts?: { windowSec?: number; minUse?: number }): { items: T[]; moved: { index: number; from: number; to: number }[] };
+  shiftLyrics<T extends { s: number; e: number }>(lyrics: T[], delta: number): T[];
 }
 
 const req = createRequire(import.meta.url);

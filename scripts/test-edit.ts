@@ -5,17 +5,21 @@
  */
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
+import { once } from 'node:events';
+import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { readScenes } from '../src/excel-reader.js';
 import { TL } from '../src/edit/timeline.js';
 import { parseLrc, parseSrt, parseLyrics } from '../src/edit/lyrics.js';
 import { assEscape, assTime, buildAss } from '../src/edit/ass.js';
-import { buildDefaultProject, normalizeProject, reconcile, parseShotName, listFonts } from '../src/edit/project.js';
+import { buildDefaultProject, normalizeProject, reconcile, parseShotName, listFonts, loadProjectFile, saveProjectFile } from '../src/edit/project.js';
 import { discoverClips } from '../src/edit/clips.js';
 import { analyze, planRender, runRender, canvasSize } from '../src/edit/render.js';
 import { resolveFfmpeg, probeDuration } from '../src/edit/ffmpeg.js';
+import { serveFile } from '../src/web/serve-file.js';
 import type { EditProject } from '../src/edit/types.js';
 
 let n = 0;
@@ -188,6 +192,102 @@ const XLSX_B = resolve('wedding-video/excel/album-phong-cach.xlsx');
   assert.ok(ass.includes('(x)') && !ass.includes('{x}'), 'ký tự {} trong lời hát bị vô hiệu');
   ok('ASS: thời gian thẻ chương khớp layout có dissolve');
   rmSync(root, { recursive: true, force: true });
+}
+
+// ── 6. sửa lỗi từ review ───────────────────────────────────
+{
+  // snapToLyrics: shot đã chạm hết clip thì không báo "đã dời"
+  const shot = (use: number, extra = {}) => ({ kind: 'shot' as const, use, start: 0.3, out: 'cut' as const, ...extra });
+  const clamped = TL.snapToLyrics([shot(5, { srcLen: 3.3 }), shot(2)], [{ s: 3.1 }]); // hiển thị 3 s (3,3 - 0,3), lời bắt đầu 0,1 s sau điểm cắt
+  assert.equal(clamped.moved.length, 0, 'điểm cắt không dời được thì không tính là đã dời');
+  assert.equal(clamped.items[0].use, 5, 'không đụng use đã lưu khi không dời được');
+  const free = TL.snapToLyrics([shot(2), shot(2)], [{ s: 2.4 }]);
+  assert.equal(free.moved.length, 1); near(free.moved[0].from, 2, 1e-9, 'from là độ dài hiển thị'); near(free.moved[0].to, 2.4, 1e-9, 'to');
+  ok('snapToLyrics: so với độ dài hiển thị (đã kẹp theo clip)');
+
+  // shiftLyrics
+  const ly = [{ s: 1, e: 3, t: 'a' }, { s: 10, e: 12, t: 'b' }, { s: 44, e: 47, t: 'c' }];
+  const sh = TL.shiftLyrics(ly, -45);
+  assert.equal(sh.length, 1, 'dòng kết thúc trước 0 bị bỏ'); assert.equal(sh[0].t, 'c'); assert.equal(sh[0].s, 0); near(sh[0].e, 2, 1e-9, 'dòng bắt đầu trước 0 bị cắt về 0');
+  const later = TL.shiftLyrics(ly, 5);
+  assert.deepEqual(later.map((x) => x.s), [6, 15, 49]); assert.equal(ly[0].s, 1, 'không sửa đầu vào');
+  ok('shiftLyrics: dời lời theo điểm bắt đầu nhạc, bỏ/cắt dòng ngoài đầu video');
+
+  // loadProjectFile: tệp sai cấu trúc → null, không làm hỏng các request sau
+  const dir = mkdtempSync(join(tmpdir(), 'edit-load-'));
+  const pj = join(dir, 'project.json');
+  for (const bad of ['{}', '[]', '"x"', 'null', '{"items":5}', '{không phải json']) { writeFileSync(pj, bad); assert.equal(loadProjectFile(dir), null, `sai cấu trúc: ${bad}`); }
+  writeFileSync(pj, JSON.stringify({ items: [null, 3, { id: 's:1' }] }));
+  const part = loadProjectFile(dir)!;
+  assert.equal(part.items.length, 1); assert.deepEqual(part.chapterGrades, {}); assert.deepEqual(part.lyrics, []); assert.equal(part.music.file, null);
+  const fresh = buildDefaultProject(await readScenes(resolve('wedding-video/excel/ngu-kiep.xlsx')), 'x');
+  assert.doesNotThrow(() => reconcile(part, fresh), 'reconcile chịu được dự án đã lưu thiếu trường');
+  saveProjectFile(dir, fresh); assert.equal(loadProjectFile(dir)!.items.length, fresh.items.length);
+  rmSync(dir, { recursive: true, force: true });
+  ok('loadProjectFile: sai cấu trúc → null; thiếu trường phụ → điền mặc định, reconcile không ném lỗi');
+
+  // serveFile: hủy hàng loạt request Range không rò fd; xóa tệp giữa chừng không làm sập tiến trình
+  const sdir = mkdtempSync(join(tmpdir(), 'edit-serve-'));
+  const big = join(sdir, 'big.bin'); writeFileSync(big, Buffer.alloc(8 * 1024 * 1024, 7));
+  const srv = createServer((req, res) => serveFile(req, res, big, 'application/octet-stream'));
+  srv.listen(0); await once(srv, 'listening');
+  const port = (srv.address() as { port: number }).port;
+  const fdCount = () => (existsSync('/proc/self/fd') ? readdirSync('/proc/self/fd').length : -1);
+  const before = fdCount();
+  await Promise.all(Array.from({ length: 40 }, () => new Promise<void>((done) => {
+    const rq = request({ port, path: '/', headers: { range: 'bytes=0-' } }, (rs) => { rs.once('data', () => { rq.destroy(); done(); }); });
+    rq.on('error', () => done()); rq.end();
+  })));
+  await new Promise((x) => setTimeout(x, 400));
+  if (before >= 0) assert.ok(fdCount() <= before + 4, `không rò fd sau 40 request bị hủy: ${before} → ${fdCount()}`);
+  // tệp bị xóa ngay sau statSync không làm sập tiến trình (lỗi stream được xử lý)
+  let crashed: Error | null = null; const onErr = (e: Error) => { crashed = e; }; process.on('uncaughtException', onErr);
+  const srv2 = createServer((req, res) => { const p = join(sdir, 'gone.bin'); writeFileSync(p, 'x'.repeat(1000)); const orig = res.writeHead.bind(res); (res as any).writeHead = (...a: any[]) => { rmSync(p, { force: true }); return (orig as any)(...a); }; serveFile(req, res, p, 'text/plain'); });
+  srv2.listen(0); await once(srv2, 'listening');
+  await new Promise<void>((done) => { const rq = request({ port: (srv2.address() as { port: number }).port, path: '/' }, (rs) => { rs.resume(); rs.on('close', () => done()); rs.on('error', () => done()); }); rq.on('error', () => done()); rq.end(); });
+  await new Promise((x) => setTimeout(x, 200)); process.off('uncaughtException', onErr);
+  assert.equal(crashed, null, 'tệp biến mất giữa chừng không gây uncaughtException');
+  srv.close(); srv2.close(); rmSync(sdir, { recursive: true, force: true });
+  ok(`serveFile: 40 request Range bị hủy không rò fd (${before} → ${fdCount()}), tệp biến mất không sập`);
+}
+
+// ── 7. clip không phải 16:9, tiến trình ffmpeg bị giới hạn ──
+{
+  const ff = resolveFfmpeg();
+  const root = mkdtempSync(join(tmpdir(), 'edit-aspect-'));
+  const out = join(root, 'output'); mkdirSync(out);
+  const run = (a: string[]) => { const r = spawnSync(ff.path, ['-v', 'error', '-y', ...a], { encoding: 'utf8' }); assert.equal(r.status, 0, r.stderr); };
+  run(['-f', 'lavfi', '-i', 'color=c=red:s=720x1280:r=24:d=3', '-pix_fmt', 'yuv420p', join(out, 'scene_1_00p01_vid.mp4')]); // dọc 9:16
+  run(['-f', 'lavfi', '-i', 'color=c=blue:s=1280x720:r=24:d=3', '-pix_fmt', 'yuv420p', join(out, 'scene_2_00p02_vid.mp4')]); // ngang 16:9
+  const clips = await discoverClips(out);
+  assert.deepEqual([clips.get('1')!.width, clips.get('1')!.height], [720, 1280]); assert.deepEqual([clips.get('2')!.width, clips.get('2')!.height], [1280, 720]);
+  const item = (id: string, num: string) => ({ id, kind: 'shot' as const, sceneNumber: num, chapter: '', code: 'A' + num, size: 'x', face: false, who: '', start: 0, use: 1, sugg: 1, out: 'cut' as const, skip: false });
+  const project: EditProject = {
+    version: 1, canvas: 'pic', resolution: 720, fps: 24, grain: false, titleFont: 'Lora', titleDur: 1.3, plateScene: null, chapterGrades: {}, chapterTitles: {},
+    outputName: 't', items: [item('s:1', '1'), item('s:2', '2')], lyrics: [], music: { file: null, name: '', duration: 0, offset: 0, fadeIn: 0, fadeOut: 0, loudness: null },
+  };
+  assert.ok(analyze(project, clips).warnings.some((w) => /không phải khổ 16:9.*A1/.test(w)), 'cảnh báo clip dọc ở bố cục pic');
+  assert.ok(!analyze({ ...project, canvas: 'full' }, clips).warnings.some((w) => /16:9/.test(w)), 'không cảnh báo ở bố cục phủ kín');
+  const outPath = join(root, 'o.mp4');
+  const plan = planRender({ project, clips, musicPath: null, editDir: root, fontsDir: resolve('assets/fonts'), outPath, preview: false });
+  await runRender(plan, outPath, () => {}).promise;
+  // 720x1280, khung ảnh 720x406 ở giữa (y 437..843). Clip dọc: đỏ chỉ ở giữa (rộng ≈ 406*9/16 = 228), hai bên đen, KHÔNG bị kéo giãn.
+  const px = (x: number, y: number, t: number) => { const r = spawnSync(ff.path, ['-v', 'error', '-ss', String(t), '-i', outPath, '-vf', `crop=1:1:${x}:${y},format=rgb24`, '-frames:v', '1', '-f', 'rawvideo', '-'], { encoding: 'buffer' }); return [...r.stdout]; };
+  const [r1, g1, b1] = px(360, 640, 0.5), [r2] = px(100, 640, 0.5), [r3, , b3] = px(100, 640, 1.5);
+  assert.ok(r1 > 200 && g1 < 60 && b1 < 60, `giữa khung clip dọc phải đỏ: ${[r1, g1, b1]}`);
+  assert.ok(r2 < 30, `hai bên clip dọc phải đen (không giãn): r=${r2}`);
+  assert.ok(b3 > 150 && r3 < 60, `clip ngang vẫn lấp đầy khung: ${[r3, b3]}`);
+  rmSync(root, { recursive: true, force: true });
+  ok('canvas pic: clip dọc giữ tỉ lệ (viền đen), clip 16:9 lấp đầy; có cảnh báo; probe đọc đúng kích thước');
+
+  // thư mục tạm được dọn khi lập kế hoạch lỗi giữa chừng (ở đây: fontsDir trỏ vào một tệp nên readdirSync ném ENOTDIR sau khi đã tạo thư mục tạm)
+  const root2 = mkdtempSync(join(tmpdir(), 'edit-aspect-'));
+  const before = readdirSync(tmpdir()).filter((f) => f.startsWith('ggflow-render-')).length;
+  assert.throws(() => planRender({ project, clips, musicPath: null, editDir: root2, fontsDir: resolve('package.json'), outPath: join(root2, 'x.mp4'), preview: false }), /ENOTDIR|not a directory/i);
+  const after = readdirSync(tmpdir()).filter((f) => f.startsWith('ggflow-render-')).length;
+  assert.equal(after, before, 'không để lại thư mục tạm khi lập kế hoạch lỗi');
+  rmSync(root2, { recursive: true, force: true });
+  ok('planRender lỗi không để lại thư mục tạm');
 }
 
 console.log(`\nTẤT CẢ ĐỀU QUA (${n} nhóm)`);

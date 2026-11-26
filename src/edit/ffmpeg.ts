@@ -60,25 +60,35 @@ export function probeMedia(file: string): Promise<MediaInfo> {
   });
 }
 
-const durCache = new Map<string, number>();
+export interface ClipProbe { duration: number; width: number; height: number }
 
-/** Độ dài (giây) của tệp media, đọc từ dòng "Duration:" của ffmpeg (không cần ffprobe). */
-export function probeDuration(file: string, mtimeKey = ''): Promise<number> {
+const probeCache = new Map<string, ClipProbe>();
+
+/** Độ dài (giây) và kích thước hình của clip, đọc từ stderr của `ffmpeg -i` (không cần ffprobe). Kết quả nhớ theo `mtimeKey`. */
+export function probeClip(file: string, mtimeKey = ''): Promise<ClipProbe> {
   const key = file + '|' + mtimeKey;
-  const hit = durCache.get(key);
+  const hit = probeCache.get(key);
   if (hit !== undefined) return Promise.resolve(hit);
   return new Promise((resolve) => {
+    const none: ClipProbe = { duration: 0, width: 0, height: 0 };
     let bin: string;
-    try { bin = resolveFfmpeg().path; } catch { return resolve(0); }
+    try { bin = resolveFfmpeg().path; } catch { return resolve(none); }
     const p = spawn(bin, ['-hide_banner', '-i', file], { stdio: ['ignore', 'ignore', 'pipe'] });
     let err = '';
     p.stderr.on('data', (d) => { err += d; });
-    p.on('error', () => resolve(0));
+    p.on('error', () => resolve(none));
     p.on('close', () => {
       const m = err.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
       const d = m ? +m[1] * 3600 + +m[2] * 60 + +m[3] : 0;
-      durCache.set(key, d);
-      resolve(d);
+      const v = err.match(/Stream #[^\n]*Video:[^\n]*?[ ,](\d{2,5})x(\d{2,5})[ ,\[]/);
+      const out = { duration: d, width: v ? +v[1] : 0, height: v ? +v[2] : 0 };
+      probeCache.set(key, out);
+      resolve(out);
     });
   });
+}
+
+/** Độ dài (giây) của tệp media. */
+export function probeDuration(file: string, mtimeKey = ''): Promise<number> {
+  return probeClip(file, mtimeKey).then((c) => c.duration);
 }

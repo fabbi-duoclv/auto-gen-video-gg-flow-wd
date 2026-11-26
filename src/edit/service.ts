@@ -6,7 +6,7 @@ import { log } from '../logger.js';
 import type { ClipInfo, EditProject } from './types.js';
 import { buildDefaultProject, listFonts, listLuts, loadProjectFile, normalizeProject, reconcile, saveProjectFile } from './project.js';
 import { discoverClips } from './clips.js';
-import { analyze, finalFileName, planRender, runRender, type Analysis, type RenderHandle } from './render.js';
+import { analyze, cleanupPlan, finalFileName, planRender, runRender, type Analysis, type RenderHandle, type RenderPlan } from './render.js';
 import { probeMedia, resolveFfmpeg } from './ffmpeg.js';
 import { parseLyrics } from './lyrics.js';
 import { GRADES } from './grades.js';
@@ -30,7 +30,7 @@ export interface RenderStatus {
   startedAt: string;
   seconds?: number;
 }
-interface Job { status: RenderStatus; handle?: RenderHandle }
+interface Job { status: RenderStatus; handle?: RenderHandle; cancelRequested?: boolean }
 
 export interface FinalFile { file: string; size: number; modified: string; preview: boolean }
 
@@ -95,8 +95,14 @@ export class EditService {
     return { analysis: analyze(project, await discoverClips(paths.outputDir), project.music.duration) };
   }
 
+  /** Đang dựng thì không đổi nhạc/LUT: ffmpeg đang đọc các tệp này (trên Windows còn không xóa/ghi đè được). */
+  private assertNotRendering(flowId: string): void {
+    if (this.jobs.get(flowId)?.status.state === 'running') throw new EditError('Đang dựng video, đợi xong (hoặc hủy) rồi mới đổi nhạc/LUT.', 409);
+  }
+
   async uploadMusic(flowId: string, buf: Buffer, originalName: string): Promise<EditProject['music']> {
     const { paths } = this.ctx(flowId);
+    this.assertNotRendering(flowId);
     const ext = (originalName.split('.').pop() || '').toLowerCase();
     if (!MUSIC_EXT.has(ext)) throw new EditError('Định dạng nhạc không hỗ trợ. Dùng mp3, wav, m4a, aac, ogg hoặc flac.');
     if (!buf.length) throw new EditError('Tệp rỗng');
@@ -105,6 +111,7 @@ export class EditService {
     writeFileSync(tmp, buf);
     const info = await probeMedia(tmp);
     if (!info.hasAudio || info.duration <= 0) { rmSync(tmp, { force: true }); throw new EditError('Không đọc được âm thanh trong tệp này.'); }
+    try { this.assertNotRendering(flowId); } catch (e) { rmSync(tmp, { force: true }); throw e; }
     for (const f of readdirSync(paths.editDir)) if (/^music\./.test(f)) rmSync(join(paths.editDir, f), { force: true });
     renameSync(tmp, join(paths.editDir, `music.${ext}`));
     const { project } = await this.current(flowId);
@@ -122,6 +129,7 @@ export class EditService {
 
   uploadLut(flowId: string, buf: Buffer, rawName: string): string {
     const { paths } = this.ctx(flowId);
+    this.assertNotRendering(flowId);
     const name = rawName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').replace(/\.cube$/i, '').replace(/[^A-Za-z0-9_-]+/g, '_').slice(0, 60).replace(/^_+|_+$/g, '');
     if (!name) throw new EditError('Tên LUT không hợp lệ');
     const text = buf.toString('utf8');
@@ -160,29 +168,41 @@ export class EditService {
 
   async startRender(flowId: string, preview: boolean): Promise<RenderStatus> {
     const { paths } = this.ctx(flowId);
-    if (this.jobs.get(flowId)?.status.state === 'running') throw new EditError('Đang có một bản dựng chạy cho flow này.', 409);
-    const { project, clips } = await this.current(flowId);
-    const music = project.music.file ? join(paths.editDir, project.music.file) : null;
-    const name = finalFileName(project, preview);
-    const finalPath = join(paths.finalDir, name);
-    const part = join(paths.finalDir, name.replace(/\.mp4$/, '.part.mp4'));
-    mkdirSync(paths.finalDir, { recursive: true });
+    const prev = this.jobs.get(flowId);
+    if (prev?.status.state === 'running') throw new EditError('Đang có một bản dựng chạy cho flow này.', 409);
 
-    let plan;
-    try {
-      plan = planRender({ project, clips, musicPath: music, editDir: paths.editDir, fontsDir: FONTS_DIR, outPath: part, preview }, project.music.duration);
-    } catch (e) { throw new EditError((e as Error).message); }
-
-    const status: RenderStatus = { state: 'running', preview, percent: 0, warnings: plan.analysis.warnings, startedAt: new Date().toISOString() };
+    // Đăng ký job NGAY (trước mọi await) để hai yêu cầu gần nhau không cùng qua được kiểm tra ở trên.
+    const status: RenderStatus = { state: 'running', preview, percent: 0, warnings: [], startedAt: new Date().toISOString() };
     const job: Job = { status };
     this.jobs.set(flowId, job);
+    const abandon = () => { if (this.jobs.get(flowId) === job) { if (prev) this.jobs.set(flowId, prev); else this.jobs.delete(flowId); } };
+
+    let plan: RenderPlan | undefined;
+    let name: string, finalPath: string, part: string;
+    try {
+      const { project, clips } = await this.current(flowId);
+      const music = project.music.file ? join(paths.editDir, project.music.file) : null;
+      name = finalFileName(project, preview);
+      finalPath = join(paths.finalDir, name);
+      part = join(paths.finalDir, name.replace(/\.mp4$/, '.part.mp4'));
+      mkdirSync(paths.finalDir, { recursive: true });
+      try {
+        plan = planRender({ project, clips, musicPath: music, editDir: paths.editDir, fontsDir: FONTS_DIR, outPath: part, preview }, project.music.duration);
+      } catch (e) { throw new EditError((e as Error).message); }
+      if (job.cancelRequested) { cleanupPlan(plan); Object.assign(status, { state: 'cancelled' }); this.fm.broadcast(flowId, 'render', status); return status; }
+    } catch (e) { abandon(); throw e; }
+
+    status.warnings = plan.analysis.warnings;
     const t0 = Date.now();
     let lastEmit = 0;
     const emit = () => this.fm.broadcast(flowId, 'render', status);
-    const handle = runRender(plan, part, (p) => {
-      status.percent = Math.round(p * 1000) / 10;
-      if (Date.now() - lastEmit > 250 || p >= 1) { lastEmit = Date.now(); emit(); }
-    });
+    let handle: RenderHandle;
+    try {
+      handle = runRender(plan, part, (p) => {
+        status.percent = Math.round(p * 1000) / 10;
+        if (Date.now() - lastEmit > 250 || p >= 1) { lastEmit = Date.now(); emit(); }
+      });
+    } catch (e) { cleanupPlan(plan); abandon(); throw new EditError((e as Error).message, 500); }
     job.handle = handle;
     log.info(`Dựng ${preview ? 'bản xem thử' : 'video'} cho flow ${flowId}: ${plan.total.toFixed(1)} s, ${plan.width}x${plan.height}`);
     handle.promise.then(() => {
@@ -192,7 +212,7 @@ export class EditService {
       log.success(`Dựng xong ${name} trong ${status.seconds}s`);
     }).catch((e: Error) => {
       rmSync(part, { force: true });
-      if (/hủy/i.test(e.message)) Object.assign(status, { state: 'cancelled', error: undefined });
+      if (job.cancelRequested) Object.assign(status, { state: 'cancelled', error: undefined });
       else { Object.assign(status, { state: 'error', error: e.message }); log.error(`Dựng lỗi: ${e.message.split('\n')[0]}`); }
     }).finally(emit);
     return status;
@@ -200,7 +220,9 @@ export class EditService {
 
   cancelRender(flowId: string): boolean {
     const j = this.jobs.get(flowId);
-    if (j?.status.state === 'running') { j.handle?.cancel(); return true; }
-    return false;
+    if (j?.status.state !== 'running') return false;
+    j.cancelRequested = true; // nếu còn đang chuẩn bị (chưa có tiến trình ffmpeg) thì startRender sẽ tự dừng
+    j.handle?.cancel();
+    return true;
   }
 }

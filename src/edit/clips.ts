@@ -1,7 +1,9 @@
 import { existsSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 import type { ClipInfo } from './types.js';
-import { probeDuration } from './ffmpeg.js';
+import { probeClip } from './ffmpeg.js';
+
+const PROBE_CONCURRENCY = 4;
 
 const CLIP_RE = /^scene_([^_]+)_.+_vid\.mp4$/i;
 
@@ -20,9 +22,14 @@ export async function discoverClips(outputDir: string): Promise<Map<string, Clip
     }
   }
   const out = new Map<string, ClipInfo>();
-  await Promise.all([...found.entries()].map(async ([num, f]) => {
-    const duration = await probeDuration(f.path, `${f.mtime}:${f.size}`);
-    if (duration > 0) out.set(num, { file: f.file, path: f.path, duration });
+  // Giới hạn số tiến trình ffmpeg chạy cùng lúc (mở Edit với ~75 clip không được bật 75 tiến trình một lượt).
+  const queue = [...found.entries()];
+  await Promise.all(Array.from({ length: Math.min(PROBE_CONCURRENCY, queue.length) }, async () => {
+    for (let job = queue.shift(); job; job = queue.shift()) {
+      const [num, f] = job;
+      const pr = await probeClip(f.path, `${f.mtime}:${f.size}`);
+      if (pr.duration > 0) out.set(num, { file: f.file, path: f.path, duration: pr.duration, width: pr.width, height: pr.height });
+    }
   }));
   return out;
 }

@@ -59,4 +59,7 @@ export interface ClipInfo {
   file: string;
   path: string;
   duration: number;
+  /** Kích thước hình gốc (0 nếu không đọc được). */
+  width: number;
+  height: number;
 }

@@ -145,7 +145,7 @@
     E.saving = true; statusText();
     const snapshot = JSON.stringify(E.p);
     try {
-      const r = await fetch(apiUrl('edit'), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: snapshot, keepalive: !!keepalive });
+      const r = await fetch(apiUrl('edit'), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: snapshot, keepalive: !!keepalive && new Blob([snapshot]).size < 60000 }); // keepalive bị trình duyệt giới hạn 64 KiB
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error || 'Lưu thất bại');
       if (JSON.stringify(E.p) === snapshot) E.dirty = false;
@@ -381,7 +381,7 @@
           : '<div class="card"><p class="hint">Excel này không chia chương nên không có màu theo chương. Dùng tab Xuất để bật hạt phim.</p></div>') +
         '<div class="card" style="margin-top:14px"><div class="row"><label class="toggle"><input type="checkbox" id="fGrain" ' + (p.grain ? 'checked' : '') + '><span>Hạt phim nhẹ</span></label><span class="hint">Giúp các clip trông cùng một cuộn phim, nhưng làm dựng chậm hơn khoảng 2 lần và tệp nặng hơn. Mặc định tắt.</span></div></div>';
     } else if (E.tab === 'lyrics') {
-      el.innerHTML = '<h2 class="insp-h">Lời hát</h2><p class="insp-sub">Mỗi dòng hiện ở giữa đáy, mờ vào/ra 0,2 s. Thời gian tính theo video (không phải theo bài nhạc). Sửa trực tiếp trong bảng.</p>' +
+      el.innerHTML = '<h2 class="insp-h">Lời hát</h2><p class="insp-sub">Mỗi dòng hiện ở giữa đáy, mờ vào/ra 0,2 s. Thời gian tính theo video (không phải theo bài nhạc): khi nhập .lrc/.srt, thời gian được trừ đi điểm bắt đầu nhạc (hiện ' + (p.music.offset || 0).toFixed(1) + ' s). Sửa trực tiếp trong bảng.</p>' +
         '<div class="row" style="margin-bottom:12px"><button class="btn-outline btn-sm" data-act="lrc">Nhập .lrc / .srt</button><button class="btn-outline btn-sm" data-act="addly">+ Thêm dòng</button>' + (p.lyrics.length ? '<button class="btn-outline btn-sm" data-act="clrly">Xóa hết</button>' : '') + '</div>' +
         (p.lyrics.length ? '<table class="ly"><thead><tr><th>Bắt đầu</th><th>Kết thúc</th><th>Chữ</th><th></th></tr></thead><tbody>' +
           p.lyrics.map((y, i) => '<tr data-i="' + i + '"><td class="t"><input data-ly="' + i + '" data-k="s" value="' + y.s.toFixed(1) + '" aria-label="Bắt đầu"></td><td class="t"><input data-ly="' + i + '" data-k="e" value="' + y.e.toFixed(1) + '" aria-label="Kết thúc"></td><td><input data-ly="' + i + '" data-k="t" value="' + esc(y.t) + '" maxlength="300" aria-label="Chữ"></td><td class="t" style="width:34px"><button class="link-btn" data-act="dely" data-i="' + i + '" aria-label="Xóa dòng">✕</button></td></tr>').join('') + '</tbody></table>'
@@ -462,7 +462,16 @@
     } else if (t.dataset.ti !== undefined) { E.p.chapterTitles[t.dataset.ti] = t.value.slice(0, 120); markDirty(); preview(true); timeline(); }
     else if (t.id === 'fFont') { E.p.titleFont = t.value; markDirty(); }
     else if (t.id === 'fTd') { const v = Math.min(3, Math.max(0.8, parseFloat(t.value) || 1.3)); E.p.titleDur = v; E.p.items.forEach((x) => { if (x.kind === 'title') x.use = v; }); changed(); inspector(); }
-    else if (t.id === 'fMo') { E.p.music.offset = Math.min(Math.max(0, parseFloat(t.value) || 0), Math.max(0, E.p.music.duration - 1)); changed(); drawWave(); inspector(); }
+    else if (t.id === 'fMo') {
+      const old = E.p.music.offset || 0;
+      E.p.music.offset = Math.min(Math.max(0, parseFloat(t.value) || 0), Math.max(0, E.p.music.duration - 1));
+      const delta = old - E.p.music.offset; // bắt đầu nhạc muộn hơn 10 s thì lời (tính theo bài) phải sớm hơn 10 s trong video
+      if (Math.abs(delta) > 0.001 && E.p.lyrics.length) {
+        const shifted = TL.shiftLyrics(E.p.lyrics, delta), lost = E.p.lyrics.length - shifted.length;
+        if (confirm('Dời ' + E.p.lyrics.length + ' dòng lời ' + (delta < 0 ? 'sớm ' : 'muộn ') + Math.abs(delta).toFixed(1) + ' s để vẫn khớp với nhạc?' + (lost ? '\n(' + lost + ' dòng nằm trước đầu video sẽ bị bỏ, không hoàn lại được.)' : '') + '\n\nOK = dời theo nhạc, Hủy = giữ nguyên thời gian lời.')) E.p.lyrics = shifted;
+      }
+      changed(); drawWave(); inspector();
+    }
     else if (t.id === 'fFi') { E.p.music.fadeIn = Math.min(10, Math.max(0, parseFloat(t.value) || 0)); markDirty(); }
     else if (t.id === 'fFo') { E.p.music.fadeOut = Math.min(10, Math.max(0, parseFloat(t.value) || 0)); markDirty(); }
     else if (t.id === 'fLoud') { E.p.music.loudness = t.value === 'null' ? null : +t.value; markDirty(); }
@@ -479,7 +488,11 @@
         const r = await fetch(apiUrl('edit/lyrics'), { method: 'POST', body: await file.text() });
         const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Không đọc được lời');
         if (E.p.lyrics.length && !confirm('Thay ' + E.p.lyrics.length + ' dòng lời hiện tại bằng ' + d.lines.length + ' dòng từ tệp?')) return;
-        E.p.lyrics = d.lines; changed(); inspector(); toast('Đã nhập ' + d.lines.length + ' dòng lời', 'success');
+        // Tệp .lrc/.srt tính theo bài hát; video bắt đầu nhạc ở `offset` nên phải trừ đi để lời khớp nhạc.
+        const off = E.p.music.offset || 0, lines = off > 0 ? TL.shiftLyrics(d.lines, -off) : d.lines;
+        if (!lines.length) throw new Error('Mọi dòng lời nằm trước điểm bắt đầu nhạc (' + off.toFixed(1) + ' s) nên không có dòng nào hiện trong video.');
+        E.p.lyrics = lines; changed(); inspector();
+        toast('Đã nhập ' + lines.length + ' dòng lời' + (off > 0 ? ' (đã dời -' + off.toFixed(1) + ' s theo điểm bắt đầu nhạc' + (lines.length < d.lines.length ? ', bỏ ' + (d.lines.length - lines.length) + ' dòng nằm trước đó' : '') + ')' : ''), 'success');
       } else if (act.kind === 'lut') {
         const r = await fetch(apiUrl('edit/lut?name=' + encodeURIComponent(file.name)), { method: 'POST', body: file });
         const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Không nhập được LUT');

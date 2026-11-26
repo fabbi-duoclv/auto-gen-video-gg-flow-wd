@@ -163,10 +163,26 @@ export function normalizeProject(raw: unknown, ctx: NormalizeCtx): EditProject {
 
 // ─── lưu / đọc ────────────────────────────────────────────────
 
+const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+
+/**
+ * Đọc dự án đã lưu. Tệp hỏng hoặc sai cấu trúc (không phải JSON, thiếu items...) thì trả null để dùng dự án mặc định,
+ * thay vì làm mọi yêu cầu sau đó lỗi 500. Các trường phụ thiếu được điền mặc định; việc kiểm tra giá trị chi tiết do normalizeProject làm.
+ */
 export function loadProjectFile(editDir: string): EditProject | null {
   const p = join(editDir, 'project.json');
   if (!existsSync(p)) return null;
-  try { return JSON.parse(readFileSync(p, 'utf8')) as EditProject; } catch { return null; }
+  let raw: unknown;
+  try { raw = JSON.parse(readFileSync(p, 'utf8')); } catch { return null; }
+  if (!isObj(raw) || !Array.isArray(raw.items)) return null;
+  return {
+    ...raw,
+    items: raw.items.filter(isObj),
+    chapterGrades: isObj(raw.chapterGrades) ? raw.chapterGrades : {},
+    chapterTitles: isObj(raw.chapterTitles) ? raw.chapterTitles : {},
+    lyrics: Array.isArray(raw.lyrics) ? raw.lyrics : [],
+    music: { ...defaultMusic(), ...(isObj(raw.music) ? raw.music : {}) },
+  } as unknown as EditProject;
 }
 
 export function saveProjectFile(editDir: string, project: EditProject): void {

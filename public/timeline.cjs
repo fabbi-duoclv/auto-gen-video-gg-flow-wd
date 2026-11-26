@@ -83,15 +83,32 @@
       if (best < 0 || bestDist > windowSec || bestDist < 0.02) return;
       var prev = best - 1;
       while (prev >= 0 && out[prev].skip) prev--;
-      var wanted = out[prev].use + (ls - lay.rows[best].t0);
+      // Dựa trên độ dài THẬT đang hiển thị (đã kẹp theo clip), không phải `use` đã lưu: nếu shot đã chạm hết clip thì điểm cắt không dời được.
+      var curUse = lay.rows[prev].use;
+      var wanted = curUse + (ls - lay.rows[best].t0);
       var maxUse = out[prev].srcLen > 0 ? out[prev].srcLen - (Number(out[prev].start) || 0) : 8;
       wanted = Math.round(Math.min(Math.max(wanted, minUse), maxUse) * 10) / 10;
-      if (Math.abs(wanted - out[prev].use) < 0.05) return;
-      moved.push({ index: prev, from: out[prev].use, to: wanted });
+      if (Math.abs(wanted - curUse) < 0.05) return;
+      moved.push({ index: prev, from: curUse, to: wanted });
       out[prev].use = wanted;
     });
     return { items: out, moved: moved };
   }
 
-  return { DISSOLVE: DISSOLVE, MIN_USE: MIN_USE, effUse: effUse, layout: layout, indexAt: indexAt, snapToLyrics: snapToLyrics };
+  /**
+   * Dời mọi dòng lời đi `delta` giây (âm = sớm hơn). Dòng kết thúc trước 0 bị bỏ; dòng bắt đầu trước 0 thì cắt về 0.
+   * Dùng khi đổi điểm bắt đầu nhạc hoặc nhập lời tính theo bài hát. Trả mảng mới.
+   */
+  function shiftLyrics(lyrics, delta) {
+    var out = [];
+    lyrics.forEach(function (y) {
+      var e = Math.round((y.e + delta) * 100) / 100;
+      if (e <= 0.05) return;
+      var s = Math.max(0, Math.round((y.s + delta) * 100) / 100);
+      out.push(Object.assign({}, y, { s: s, e: Math.max(e, s + 0.2) }));
+    });
+    return out;
+  }
+
+  return { DISSOLVE: DISSOLVE, MIN_USE: MIN_USE, effUse: effUse, layout: layout, indexAt: indexAt, snapToLyrics: snapToLyrics, shiftLyrics: shiftLyrics };
 });
