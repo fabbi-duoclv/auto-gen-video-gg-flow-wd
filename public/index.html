@@ -933,6 +933,10 @@ async function mergeVideo() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Ghép video thất bại');
       showToast('Đã ghép ' + data.clips + ' clip (~' + data.seconds + ' giây)', 'success', 5000);
+      if (data.missing && data.missing.length) {
+        showToast('Thiếu ' + data.missing.length + ' cảnh chưa có video nên KHÔNG có trong bản ghép: ' +
+          data.missing.join(', ') + '. Chạy lại các cảnh này (tick Resume) rồi ghép lại.', 'error', 15000);
+      }
       await loadResults();
       showMedia('video', 'final.mp4');
     } catch (e) { showToast(e.message, 'error', 6000); }

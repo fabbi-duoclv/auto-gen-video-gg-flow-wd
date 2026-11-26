@@ -8,7 +8,7 @@ import { FlowManager } from '../flow-manager.js';
 import { openLoginBrowser, type RunConfig } from '../engine.js';
 import { MAX_PHOTO_BYTES, PhotoError } from '../flow-photos.js';
 import { TEMPLATES, templateAvailable } from '../templates.js';
-import { mergeClips, isMerging } from '../merge.js';
+import { isMerging, type MergeResult } from '../merge.js';
 
 // ─── Helpers ─────────────────────────────────────────────────
 
@@ -59,15 +59,15 @@ export function handleFlowMerge(fm: FlowManager) {
   return async (_req: IncomingMessage, res: ServerResponse, flowId: string) => {
     const meta = fm.getFlowMeta(flowId);
     if (!meta) { json(res, { error: 'Flow not found' }, 404); return; }
-    const state = fm.getFlow(flowId)?.engine?.getState();
-    if (state && state !== 'idle') {
-      json(res, { error: 'Flow đang chạy, dừng hoặc đợi chạy xong rồi mới ghép video.' }, 409);
+    let job: Promise<MergeResult>;
+    try {
+      job = fm.mergeFlow(flowId); // kiểm tra trạng thái + giữ khóa ghép, không có await xen giữa
+    } catch (e) {
+      json(res, { error: (e as Error).message }, 409);
       return;
     }
     try {
-      const scenes = await fm.getScenes(flowId);
-      const result = await mergeClips(getFlowPaths(flowId).outputDir, scenes);
-      json(res, result);
+      json(res, await job);
     } catch (e) {
       json(res, { error: (e as Error).message }, 400);
     }
@@ -243,6 +243,7 @@ export function handleFlowStart(fm: FlowManager) {
         throw new Error('Đang ghép video, đợi ghép xong rồi mới chạy tiếp.');
       }
       const body = await parseBody(req);
+      // startFlow kiểm tra lại isMerging đồng bộ, phòng trường hợp ghép bắt đầu trong lúc đọc body.
       const config: RunConfig = {
         scenes: body.scenes as string[] | undefined,
         imageOnly: body.imageOnly as boolean | undefined,
