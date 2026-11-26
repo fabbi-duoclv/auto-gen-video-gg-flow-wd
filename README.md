@@ -225,3 +225,25 @@ Biến môi trường (`.env`, tùy chọn): `REF_HASH_STRONG_DIST` (mặc đị
 - Trạng thái mỗi người: `Uploaded` / `From Excel path` / `Excel path not found` / `No photo`. Thanh tóm tắt hiện `📷 x/y photos`.
 - Bấm Start khi Excel trỏ tới tệp không tồn tại ⇒ chặn và báo; khi có người không có ảnh lẫn headshot prompt ⇒ hỏi xác nhận.
 - API: `POST|GET|DELETE /api/flows/:id/photos/:charId` (POST gửi nguyên byte ảnh làm body). Không đổi được ảnh khi Flow đang chạy.
+
+## Bước Dựng video (Edit)
+
+Sau khi bước Generate tải clip về (`output/scene_<số>_<mốc>_vid.mp4`), bấm **Edit** ở đầu Flow (hoặc mở `/flow/<id>/edit`) để cắt, ghép và xuất video hoàn chỉnh.
+
+| Làm được | Ghi chú |
+|---|---|
+| Cắt từng shot theo độ dài "dùng" trong Excel | chỉnh được điểm bắt đầu / độ dài, bỏ shot, nút "Gợi ý từ Excel" |
+| Ghép, dissolve, thẻ chương | thẻ chương dùng clip khói của cảnh 00, chữ chèn khi dựng; dissolve đọc từ cột Chuyển cảnh, sửa được |
+| Màu theo chương | 6 bảng màu + nhập LUT `.cube`; hạt phim tắt mặc định (bật thì dựng chậm ~2 lần, tệp nặng hơn nhiều) |
+| Lời hát | nhập `.lrc` / `.srt`, hoặc sửa tay; nút **Canh cắt theo lời** kéo điểm cắt gần lời về đúng lúc lời bắt đầu (có Hoàn tác); lời nhập từ tệp được trừ điểm bắt đầu nhạc, đổi điểm bắt đầu nhạc sẽ hỏi có dời lời theo không |
+| Nhạc | mp3/wav/m4a/aac/ogg/flac ≤ 100 MB, điểm bắt đầu, mờ vào/ra, chuẩn -14/-16 LUFS |
+| Canvas | 9:16 có khung 16:9 (như hai video mẫu), 9:16 phủ kín, 16:9; 1080p hoặc 720p; 24/30 fps; clip không phải 16:9 ở bố cục khung 16:9 được giữ tỉ lệ (viền đen) và có cảnh báo |
+| Xem trước | phát clip thật + nhạc + lời ngay trong trình duyệt (màu gần đúng, dissolve hiện như cắt). **Render preview** dựng bản nhỏ bằng ffmpeg để xem đúng màu |
+| Xuất | `flows/<id>/output/final/<tên>.mp4`, có tiến độ, hủy được; ghi ra `.part.mp4` rồi đổi tên nên không mất bản cũ nếu lỗi |
+
+- **ffmpeg:** dùng `FFMPEG_PATH` nếu đặt; không thì ffmpeg của máy (nếu đủ bộ lọc `subtitles, xfade, loudnorm, lut3d`); không thì bản đóng gói `ffmpeg-static` (tải khi `npm install`; nếu mạng chặn, cài ffmpeg riêng hoặc đặt `FFMPEG_PATH`).
+- **Phông chữ:** `assets/fonts/Lora-*.ttf` (OFL, có tiếng Việt). Thêm phông: bỏ `.ttf/.otf` dạng `Tên-Kiểu.ttf` vào đó.
+- **Lưu:** tự động vào `flows/<id>/edit/project.json` (cùng nhạc và LUT, đã `.gitignore`). Import lại Excel thì chỉnh sửa của bạn được giữ theo từng cảnh.
+- **Chưa có:** chọn nhiều phương án cho một shot (pipeline hiện chỉ tải một clip mỗi cảnh), tự gán thời gian lời bằng nhận dạng giọng hát, tự bắt nhịp.
+- **Test:** `npm run test:edit` (lõi + dựng thật bằng ffmpeg, không cần mạng) và `npm run test:edit-api` (cần `npm run serve` đang chạy).
+

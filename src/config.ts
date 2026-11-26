@@ -59,6 +59,8 @@ export interface FlowPaths {
   excelPath: string;
   outputDir: string;
   photosDir: string;
+  editDir: string;
+  finalDir: string;
   progressFile: string;
   metaFile: string;
 }
@@ -70,6 +72,8 @@ export function getFlowPaths(flowId: string): FlowPaths {
     excelPath: join(flowDir, 'scene-data.xlsx'),
     outputDir: join(flowDir, 'output'),
     photosDir: join(flowDir, 'photos'),
+    editDir: join(flowDir, 'edit'),
+    finalDir: join(flowDir, 'output', 'final'),
     progressFile: join(flowDir, 'progress.json'),
     metaFile: join(flowDir, 'meta.json'),
   };

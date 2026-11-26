@@ -78,8 +78,8 @@ python3 prompt-source/build_excel.py excel
 - `video-generator.ts`: `configureModel('video', '16:9', 1, 'fast')` cố định 16:9, x1, fast. Video phát dọc cần 9:16.
 - `REBUILD_SPEC.md` mục 12: sửa prompt trên web chưa được áp dụng; `anchorText` và `negativeConstraints` chưa ghép vào prompt; `isSceneComplete` đòi cả ảnh lẫn video.
 
-### 3.4. Phần dựng sau khi tải clip (dự án gốc chưa có)
-Cắt mỗi clip theo độ dài "dùng", ghép theo thứ tự, thêm nhạc có lời, phụ đề lời hát, thẻ chương (nền khói + chữ), chỉnh màu theo chương. Chi tiết ở `docs/phan-tich-va-quy-trinh.md` mục 4.
+### 3.4. Phần dựng sau khi tải clip: ĐÃ THÊM (bước Edit trên web UI)
+Cắt theo "dùng", ghép, dissolve, thẻ chương, chỉnh màu theo chương, lời hát (.lrc/.srt), nhạc, xuất 9:16 / 16:9. Xem README mục "Bước Dựng video". Đã kiểm bằng clip giả (ffmpeg thật, trình duyệt thật); **chưa dựng thử với clip thật từ Flow**, nên chất lượng màu và khuôn mặt cần xem lại sau lần chạy thật đầu tiên. Cần bài nhạc và lời bạn chọn.
 
 ## 4. Rủi ro cần biết
 

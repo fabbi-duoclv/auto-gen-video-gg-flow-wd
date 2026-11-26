@@ -1,6 +1,7 @@
 import { type IncomingMessage, type ServerResponse } from 'http';
 import { readdirSync, statSync, createReadStream, existsSync } from 'fs';
 import { join, extname, basename } from 'path';
+import { serveFile } from './serve-file.js';
 import ExcelJS from 'exceljs';
 import archiver from 'archiver';
 import { getFlowPaths } from '../config.js';
@@ -15,7 +16,7 @@ import { isMerging, type MergeResult } from '../merge.js';
 const RATIOS = ['16:9', '9:16', '1:1'] as const;
 type Ratio = (typeof RATIOS)[number];
 
-function json(res: ServerResponse, data: unknown, status = 200): void {
+export function json(res: ServerResponse, data: unknown, status = 200): void {
   res.writeHead(status, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(data));
 }
@@ -118,7 +119,7 @@ export function handleCloneFlow(fm: FlowManager) {
 // ─── Character photos (ảnh cô dâu / chú rể) ─────────────────
 
 /** Đọc body nhưng dừng ngay khi vượt giới hạn, tránh nuốt RAM bởi tệp quá lớn. */
-function collectLimited(req: IncomingMessage, limit: number): Promise<Buffer | 'too-large'> {
+export function collectLimited(req: IncomingMessage, limit: number): Promise<Buffer | 'too-large'> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
@@ -328,66 +329,9 @@ export function handleFlowOutputFile(fm: FlowManager) {
   return (req: IncomingMessage, res: ServerResponse, flowId: string, filename: string) => {
     const meta = fm.getFlowMeta(flowId);
     if (!meta) { res.writeHead(404); res.end('Flow not found'); return; }
-
-    const paths = getFlowPaths(flowId);
-    const filePath = join(paths.outputDir, basename(filename));
-    let size: number;
-    try {
-      const stat = statSync(filePath);
-      if (!stat.isFile()) throw new Error('not a file');
-      size = stat.size;
-    } catch {
-      res.writeHead(404);
-      res.end('File not found');
-      return;
-    }
-
-    const ext = extname(filename).toLowerCase();
-    const mimeTypes: Record<string, string> = {
-      '.png': 'image/png',
-      '.jpg': 'image/jpeg',
-      '.jpeg': 'image/jpeg',
-      '.mp4': 'video/mp4',
-      '.webm': 'video/webm',
-    };
-    const headers: Record<string, string | number> = {
-      'Content-Type': mimeTypes[ext] || 'application/octet-stream',
-      'Accept-Ranges': 'bytes',
-      // final.mp4 bị ghi đè mỗi lần ghép lại: bắt trình duyệt tải bản mới
-      'Cache-Control': 'no-cache',
-    };
-
-    // Range: để trình duyệt tua được video (Safari/iOS bắt buộc phải có).
-    const range = req.headers.range;
-    let start = 0;
-    let end = size - 1;
-    let status = 200;
-    if (range) {
-      const m = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
-      if (m && (m[1] || m[2])) {
-        if (m[1]) {
-          start = Number(m[1]);
-          end = m[2] ? Math.min(Number(m[2]), size - 1) : size - 1;
-        } else {
-          start = Math.max(size - Number(m[2]), 0); // "bytes=-N": N byte cuối
-        }
-      }
-      if (!m || (!m[1] && !m[2]) || start > end || start >= size) {
-        res.writeHead(416, { 'Content-Range': `bytes */${size}` });
-        res.end();
-        return;
-      }
-      status = 206;
-      headers['Content-Range'] = `bytes ${start}-${end}/${size}`;
-    }
-    headers['Content-Length'] = size === 0 ? 0 : end - start + 1;
-    res.writeHead(status, headers);
-    if (req.method === 'HEAD' || size === 0) { res.end(); return; }
-
-    const stream = createReadStream(filePath, { start, end });
-    stream.on('error', () => res.destroy());
-    res.on('close', () => stream.destroy()); // người xem đóng/tua: nhả handle file ngay
-    stream.pipe(res);
+    if (filename !== basename(filename) || filename.startsWith('.')) { res.writeHead(400); res.end('Bad name'); return; }
+    const mimeTypes: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.mp4': 'video/mp4', '.webm': 'video/webm' };
+    serveFile(req, res, join(getFlowPaths(flowId).outputDir, filename), mimeTypes[extname(filename).toLowerCase()] || 'application/octet-stream');
   };
 }
 

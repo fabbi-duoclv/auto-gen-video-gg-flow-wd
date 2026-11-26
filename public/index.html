@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/edit.css">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 28'%3E%3Crect x='3' y='10' width='22' height='15' rx='3' fill='%238c2f5b'/%3E%3Cpath d='M3.8 6.9 22.6 3l1.1 4.6L4.9 11.5z' fill='%238c2f5b' opacity='.55'/%3E%3Cpath d='m11 14.5 6 3.5-6 3.5z' fill='%23fff'/%3E%3C/svg%3E">
 <style>
   /* Layout idea: slim header, a run bar, then a workspace of shot list (left) and shot detail (right).
@@ -334,6 +335,8 @@
 
 <div class="toast-container" id="toastContainer"></div>
 
+<script src="/timeline.cjs"></script>
+<script src="/edit.js"></script>
 <script>
 // ─── Toast & Loading ─────────────────────────────────────
 const TOAST_ICONS = { success: '✓', error: '!', info: 'i' };
@@ -372,8 +375,10 @@ function navigate(path) {
 
 function route() {
   currentFlowId = getFlowIdFromUrl();
+  if (window.Ed) Ed.leave(); // thoát view Dựng (lưu dở, đóng kết nối)
+  if (eventSource) { eventSource.close(); eventSource = null; }
   if (currentFlowId) {
-    renderFlowView();
+    if (/\/edit\/?$/.test(window.location.pathname)) Ed.render(); else renderFlowView();
   } else {
     renderHomeView();
   }
@@ -556,6 +561,7 @@ async function renderFlowView() {
         <h1 class="crumb-name">${esc(flowMeta.name)}</h1>
         <span id="statusBadge" class="status-badge status-${esc(flowMeta.status)}">${esc(statusLabel(flowMeta.status))}</span>
       </div>
+      <div class="seg" role="tablist" aria-label="Giai đoạn"><button role="tab" class="on" aria-selected="true">Generate</button><button role="tab" onclick="navigate('/flow/${currentFlowId}/edit')">Edit</button></div>
       <div class="header-actions">
         <button class="btn-outline" id="btnMerge" onclick="mergeVideo()" title="Ghép các clip đã tạo thành 1 video final.mp4">Ghép video</button>
         <button class="btn-primary" id="btnStart" onclick="doStart()" disabled>Start</button>
@@ -1061,6 +1067,7 @@ function showDialog(html) {
 
 function closeDialog() {
   document.getElementById('dialogOverlay').classList.remove('active');
+  document.getElementById('dialogBox').classList.remove('wide');
 }
 
 function showPromptDialog(title, label, defaultValue, onOk) {
