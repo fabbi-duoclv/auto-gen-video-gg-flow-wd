@@ -9,7 +9,10 @@ export const CONFIG = {
   PROGRESS_FILE: resolve('./progress.json'),
   FLOWS_DIR: resolve('./flows'),
   MAX_CONCURRENT_FLOWS: 5,
-  MAX_CONCURRENT_SCENES: 3,
+  // Số cảnh chạy song song (mỗi cảnh một tab trên CÙNG một project). Mặc định 1: nhiều tab thì tab nền bị Chrome
+  // hãm nên ảnh không tải/đếm được (cảnh bị kẹt hết giờ), và các tab dễ lấy nhầm "ô mới nhất" của nhau.
+  // Muốn chạy song song thì đặt biến môi trường MAX_CONCURRENT_SCENES.
+  MAX_CONCURRENT_SCENES: Math.max(1, Number(process.env.MAX_CONCURRENT_SCENES) || 1),
 
   // Timing
   DELAY_BETWEEN_SCENES_MS: 5000,

@@ -5,6 +5,8 @@ output/
 progress.json
 .env
 browser-profile/
+# ảnh chẩn đoán khi engine lỗi (có thể chứa email tài khoản)
+debug/
 .claude/
 
 # ảnh thật của cô dâu/chú rể: không commit

@@ -38,8 +38,10 @@ const ALLOWED_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 const WARN_BYTES = 10 * 1024 * 1024;
 const UPLOAD_TRIGGER_TEXT = /tải.{0,12}lên|upload/i;
 /** Một mục ảnh trong popup "+": cùng selector với attachReferences() của bản gốc, thêm điều kiện có <img>. */
-const ITEM = 'div[tabindex="0"]:has(img)';
-const DIALOG = '[role="dialog"][data-state="open"]';
+// Mỗi ảnh trong popup: giao diện cũ là div[tabindex=0] chứa img, giao diện mới là button.asset-item[role=option].
+const ITEM = 'div[tabindex="0"]:has(img), button.asset-item[role="option"]';
+// Popup chọn ảnh: giao diện cũ là Radix dialog, giao diện mới (Angular) là .add-menu-popover-container.
+const DIALOG = '[role="dialog"][data-state="open"], .add-menu-popover-container';
 
 /** Đọc lúc gọi (không đọc lúc import) để .env nạp sau vẫn có hiệu lực. */
 export function tuning() {
@@ -92,12 +94,18 @@ async function openDialog(fp: FlowPage): Promise<Locator> {
   const dialog = page.locator(DIALOG).first();
   if (await dialog.isVisible().catch(() => false)) return dialog;
 
-  const addBtn = page.locator('button:has-text("add_2")').first();
+  const addBtn = fp.addRefButton();
   if (!(await addBtn.isVisible({ timeout: 5000 }).catch(() => false))) {
+    await fp.dumpDiagnostics('add-btn-missing');
     throw new Error('Không thấy nút "+" (add_2) để mở popup ảnh tham chiếu');
   }
   await addBtn.click();
-  await dialog.waitFor({ state: 'visible', timeout: 8000 });
+  try {
+    await dialog.waitFor({ state: 'visible', timeout: 8000 });
+  } catch (e) {
+    await fp.dumpDiagnostics('ref-dialog-missing');
+    throw e;
+  }
   await page.waitForTimeout(1500);
   return dialog;
 }
@@ -153,6 +161,17 @@ interface MatchInfo {
 async function findMatch(fp: FlowPage, items: Locator, photo: RefPhoto): Promise<MatchInfo> {
   const t = tuning();
   const count = await items.count();
+
+  // Giao diện mới: mỗi dòng có tên tệp (.asset-title) và ảnh upload giữ nguyên tên, trong khi thumbnail có thể
+  // không bao giờ hiện (chỉ có icon giữ chỗ) nên dHash không dùng được. Đúng MỘT dòng trùng tên ⇒ nhận ngay.
+  // Trùng tên nhiều dòng (upload lặp) thì rơi xuống so dấu vân ảnh như cũ.
+  const fileName = basename(photo.path);
+  const titleHits: number[] = [];
+  for (let i = 0; i < count; i++) {
+    const title = ((await items.nth(i).locator('.asset-title').first().textContent({ timeout: 1500 }).catch(() => null)) ?? '').trim();
+    if (title === fileName) titleHits.push(i);
+  }
+  if (titleHits.length === 1) return { found: { index: titleHits[0], dist: 0, count }, best: 0, second: 65, count };
 
   if (photo.lastFromEnd !== undefined) {
     const i = count - 1 - photo.lastFromEnd;
@@ -222,6 +241,9 @@ async function waitUploaded(fp: FlowPage, photo: RefPhoto): Promise<MatchInfo> {
     const dialog = await openDialog(fp); // phòng khi popup tự đóng sau upload
     last = await findMatch(fp, dialog.locator(ITEM), photo);
     if (last.found) return last;
+    // Thumbnail trong popup mới tải lười và không tự cập nhật khi popup đang mở (hiện icon giữ chỗ):
+    // đóng để lần lặp sau mở lại, danh sách được dựng mới.
+    await closeDialog(fp);
   }
   throw new Error(
     `Đã gửi ảnh "${photo.name}" nhưng không thấy trong popup sau ${Math.round(CONFIG.UPLOAD_TIMEOUT_MS / 1000)}s ` +
@@ -309,7 +331,11 @@ export async function attachReferencesByPhoto(fp: FlowPage, refIndices: number[]
     }
     await items.nth(r.found.index).click();
     photo.lastFromEnd = r.found.count - 1 - r.found.index;
-    await fp.page.waitForTimeout(1500);
+    await fp.page.waitForTimeout(1000);
+    // Giao diện mới: bấm vào dòng chỉ chọn + hiện xem trước, phải bấm "Add to prompt" mới gắn vào ô nhập.
+    const addToPrompt = fp.page.locator('button').filter({ hasText: /^\s*(add to prompt|thêm vào câu lệnh|thêm vào prompt)\s*$/i }).first();
+    if (await addToPrompt.isVisible({ timeout: 2000 }).catch(() => false)) await addToPrompt.click();
+    await fp.page.waitForTimeout(1000);
     log.info(`Gắn ảnh "${photo.name}" (mục ${r.found.index + 1}/${r.found.count}, khoảng cách ${r.found.dist})`);
   }
 }

@@ -15,6 +15,10 @@ export async function launchBrowser(options: BrowserOptions = {}): Promise<Brows
   const context = await chromium.launchPersistentContext(CONFIG.BROWSER_DATA_DIR, {
     headless,
     viewport: { width: 1920, height: 1080 },
+    // Selector của FlowPage dựa vào chữ tiếng Việt ("Dự án mới", "Tạo", "Không thành công"...):
+    // ép giao diện Flow về tiếng Việt, không phụ thuộc ngôn ngữ mặc định của máy/tài khoản.
+    locale: 'vi-VN',
+    extraHTTPHeaders: { 'Accept-Language': 'vi-VN,vi;q=0.9' },
     acceptDownloads: true,
     args: [
       '--disable-blink-features=AutomationControlled',
@@ -42,8 +46,15 @@ export async function getSharedBrowser(options: BrowserOptions = {}): Promise<Br
 
 /** Create a new Page (tab) in the shared BrowserContext */
 export async function createFlowPage(options: BrowserOptions = {}): Promise<Page> {
+  const fresh = !sharedContext;
   const ctx = await getSharedBrowser(options);
-  return ctx.newPage();
+  // Chrome tự mở một tab about:blank khi khởi động mà không ai dùng: đóng sau khi đã có tab Flow thật.
+  const initial = fresh ? ctx.pages() : [];
+  const page = await ctx.newPage();
+  for (const p of initial) {
+    if (p !== page && p.url() === 'about:blank') await p.close().catch(() => {});
+  }
+  return page;
 }
 
 /** Close the shared browser if open */

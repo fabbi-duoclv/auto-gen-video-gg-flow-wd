@@ -5,7 +5,8 @@ import { withRetry } from './retry.js';
 import { type FlowLogger, log as globalLog } from './logger.js';
 import { join } from 'path';
 
-const MAX_GEN_RETRIES = 2;
+// Thử tạo tối đa 3 lần; cả 3 lần lỗi thì báo cáo kèm lý do cuối cùng (vd. vi phạm chính sách).
+const MAX_GEN_RETRIES = 3;
 
 export async function generateVideo(
   flowPage: FlowPage,
@@ -23,6 +24,7 @@ export async function generateVideo(
 
   // Step 1: Animate + generate video with up to 2 retries
   let genSuccess = false;
+  let lastError = '';
   for (let attempt = 1; attempt <= MAX_GEN_RETRIES; attempt++) {
     try {
       log.scene(scene.sceneNumber, `Generating video (attempt ${attempt}/${MAX_GEN_RETRIES}): ${scene.videoPrompt.substring(0, 60)}...`);
@@ -38,6 +40,7 @@ export async function generateVideo(
       break;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      lastError = msg;
       log.warn(`Video gen attempt ${attempt}/${MAX_GEN_RETRIES} failed: ${msg}`);
       if (attempt < MAX_GEN_RETRIES) {
         log.info(`Navigating back to project for retry...`);
@@ -47,7 +50,7 @@ export async function generateVideo(
   }
 
   if (!genSuccess) {
-    throw new Error(`Video generation failed after ${MAX_GEN_RETRIES} attempts`);
+    throw new Error(`Không tạo được video sau ${MAX_GEN_RETRIES} lần thử. Lý do cuối: ${lastError}`);
   }
 
   // Step 2: Download with retry
