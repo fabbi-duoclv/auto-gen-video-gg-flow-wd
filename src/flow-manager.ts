@@ -337,6 +337,9 @@ export class FlowManager {
     if (isMerging(paths.outputDir)) {
       throw new Error('Đang ghép video, đợi ghép xong rồi mới chạy tiếp.');
     }
+    if (this.editRendering.has(id)) {
+      throw new Error('Đang dựng video ở bước Edit, đợi dựng xong (hoặc hủy) rồi mới chạy Generate.');
+    }
 
     session.starting = true;
     try {
@@ -344,6 +347,16 @@ export class FlowManager {
     } finally {
       session.starting = false;
     }
+  }
+
+  /** Bước Edit đang đọc các clip của flow: không cho Generate ghi đè clip lúc đó. */
+  private editRendering = new Set<string>();
+  setEditRendering(id: string, on: boolean): void { if (on) this.editRendering.add(id); else this.editRendering.delete(id); }
+
+  /** Generate đang chạy/khởi động/dừng: các clip có thể đang được ghi dở. */
+  isGenerating(id: string): boolean {
+    const session = this.flows.get(id);
+    return !!session && (session.starting || (!!session.engine && session.engine.getState() !== 'idle'));
   }
 
   /** Ghép clip thành final.mp4. Từ chối khi flow đang chạy/khởi động; khóa ghép được giữ trước await đầu tiên. */

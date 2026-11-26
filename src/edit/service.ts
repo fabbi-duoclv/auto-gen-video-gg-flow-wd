@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'fs';
+import { randomUUID } from 'crypto';
 import { join, resolve } from 'path';
 import type { FlowManager } from '../flow-manager.js';
 import { getFlowPaths } from '../config.js';
@@ -46,8 +47,23 @@ export interface EditState {
   finals: FinalFile[];
 }
 
+/**
+ * Thay `dest` bằng `src` mà không bao giờ làm mất bản cũ nếu việc thay thế thất bại (vd. Windows: tệp đang được xem/tải nên không ghi đè được).
+ * POSIX đổi tên đè là nguyên tử; nếu bị từ chối thì đưa bản cũ sang `.old`, đặt bản mới, rồi xóa `.old` (lỗi ở bước nào cũng hoàn lại).
+ */
+export function replaceFile(src: string, dest: string): void {
+  try { renameSync(src, dest); return; } catch (e) { if (!existsSync(dest)) throw e; }
+  const bak = dest + '.old';
+  rmSync(bak, { force: true });
+  try { renameSync(dest, bak); }
+  catch { throw new Error(`Không thay được ${dest.split(/[\\/]/).pop()} vì tệp đang được mở (đang xem/tải). Đóng video rồi dựng lại; bản cũ vẫn còn nguyên.`); }
+  try { renameSync(src, dest); } catch (e) { renameSync(bak, dest); throw e; }
+  rmSync(bak, { force: true });
+}
+
 export class EditService {
   private jobs = new Map<string, Job>();
+  private uploading = new Set<string>(); // một lần tải nhạc mỗi flow: hai lần song song sẽ xóa nhầm tệp của nhau
   constructor(private fm: FlowManager) {}
 
   private ctx(flowId: string) {
@@ -62,6 +78,7 @@ export class EditService {
     const scenes = await this.fm.getScenes(flowId);
     if (!scenes.length) throw new EditError('Flow chưa có dữ liệu Excel. Import Excel ở bước Generate trước.');
     const fresh = buildDefaultProject(scenes, this.fm.getFlowMeta(flowId)!.name);
+    if (!fresh.items.some((i) => i.kind === 'shot')) throw new EditError('Excel này không có cảnh video (AI-VID) nào để dựng. Bước Edit chỉ ghép các clip video.');
     const saved = loadProjectFile(paths.editDir);
     let project = saved ? reconcile(saved, fresh) : fresh;
     project = normalizeProject(project, { luts, fonts });
@@ -106,8 +123,14 @@ export class EditService {
     const ext = (originalName.split('.').pop() || '').toLowerCase();
     if (!MUSIC_EXT.has(ext)) throw new EditError('Định dạng nhạc không hỗ trợ. Dùng mp3, wav, m4a, aac, ogg hoặc flac.');
     if (!buf.length) throw new EditError('Tệp rỗng');
+    if (this.uploading.has(flowId)) throw new EditError('Đang tải một tệp nhạc khác lên, đợi xong rồi thử lại.', 409);
+    this.uploading.add(flowId);
+    try { return await this.storeMusic(flowId, paths, buf, ext, originalName); } finally { this.uploading.delete(flowId); }
+  }
+
+  private async storeMusic(flowId: string, paths: ReturnType<typeof getFlowPaths>, buf: Buffer, ext: string, originalName: string): Promise<EditProject['music']> {
     mkdirSync(paths.editDir, { recursive: true });
-    const tmp = join(paths.editDir, `upload-${Date.now()}.${ext}`);
+    const tmp = join(paths.editDir, `upload-${randomUUID()}.${ext}`);
     writeFileSync(tmp, buf);
     const info = await probeMedia(tmp);
     if (!info.hasAudio || info.duration <= 0) { rmSync(tmp, { force: true }); throw new EditError('Không đọc được âm thanh trong tệp này.'); }
@@ -170,12 +193,14 @@ export class EditService {
     const { paths } = this.ctx(flowId);
     const prev = this.jobs.get(flowId);
     if (prev?.status.state === 'running') throw new EditError('Đang có một bản dựng chạy cho flow này.', 409);
+    if (this.fm.isGenerating(flowId)) throw new EditError('Flow đang chạy Generate nên các clip có thể còn đang tải dở. Đợi Generate xong (hoặc dừng) rồi dựng.', 409);
 
     // Đăng ký job NGAY (trước mọi await) để hai yêu cầu gần nhau không cùng qua được kiểm tra ở trên.
     const status: RenderStatus = { state: 'running', preview, percent: 0, warnings: [], startedAt: new Date().toISOString() };
     const job: Job = { status };
     this.jobs.set(flowId, job);
-    const abandon = () => { if (this.jobs.get(flowId) === job) { if (prev) this.jobs.set(flowId, prev); else this.jobs.delete(flowId); } };
+    this.fm.setEditRendering(flowId, true); // Generate không được ghi đè clip trong lúc ffmpeg đang đọc
+    const abandon = () => { this.fm.setEditRendering(flowId, false); if (this.jobs.get(flowId) === job) { if (prev) this.jobs.set(flowId, prev); else this.jobs.delete(flowId); } };
 
     let plan: RenderPlan | undefined;
     let name: string, finalPath: string, part: string;
@@ -189,7 +214,7 @@ export class EditService {
       try {
         plan = planRender({ project, clips, musicPath: music, editDir: paths.editDir, fontsDir: FONTS_DIR, outPath: part, preview }, project.music.duration);
       } catch (e) { throw new EditError((e as Error).message); }
-      if (job.cancelRequested) { cleanupPlan(plan); Object.assign(status, { state: 'cancelled' }); this.fm.broadcast(flowId, 'render', status); return status; }
+      if (job.cancelRequested) { cleanupPlan(plan); this.fm.setEditRendering(flowId, false); Object.assign(status, { state: 'cancelled' }); this.fm.broadcast(flowId, 'render', status); return status; }
     } catch (e) { abandon(); throw e; }
 
     status.warnings = plan.analysis.warnings;
@@ -206,15 +231,14 @@ export class EditService {
     job.handle = handle;
     log.info(`Dựng ${preview ? 'bản xem thử' : 'video'} cho flow ${flowId}: ${plan.total.toFixed(1)} s, ${plan.width}x${plan.height}`);
     handle.promise.then(() => {
-      rmSync(finalPath, { force: true });
-      renameSync(part, finalPath);
+      replaceFile(part, finalPath);
       Object.assign(status, { state: 'done', percent: 100, file: name, seconds: Math.round((Date.now() - t0) / 100) / 10 });
       log.success(`Dựng xong ${name} trong ${status.seconds}s`);
     }).catch((e: Error) => {
       rmSync(part, { force: true });
       if (job.cancelRequested) Object.assign(status, { state: 'cancelled', error: undefined });
       else { Object.assign(status, { state: 'error', error: e.message }); log.error(`Dựng lỗi: ${e.message.split('\n')[0]}`); }
-    }).finally(emit);
+    }).finally(() => { this.fm.setEditRendering(flowId, false); emit(); });
     return status;
   }
 

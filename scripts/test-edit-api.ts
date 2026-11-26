@@ -4,7 +4,8 @@
  */
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { resolveFfmpeg } from '../src/edit/ffmpeg.js';
 
@@ -16,6 +17,8 @@ const j = async (r: Response) => (await r.json()) as any;
 let n = 0;
 const ok = (s: string) => { console.log('PASS ', s); n++; };
 
+const TMP = mkdtempSync(join(tmpdir(), 'edit-api-'));
+const MUSIC = join(TMP, 't-music.mp3');
 const ff = resolveFfmpeg().path;
 const run = (a: string[]) => { const r = spawnSync(ff, ['-v', 'error', '-y', ...a], { encoding: 'utf8' }); assert.equal(r.status, 0, r.stderr); };
 
@@ -54,8 +57,8 @@ try {
   ok('PUT edit: lưu và đọc lại, từ chối JSON hỏng và id trùng');
 
   // nhạc
-  run(['-f', 'lavfi', '-i', 'sine=frequency=440:duration=12', '-c:a', 'libmp3lame', '/tmp/claude-0/t-music.mp3']);
-  r = await api(`/${id}/edit/music?name=${encodeURIComponent('bài hát.mp3')}`, { method: 'POST', body: readFileSync('/tmp/claude-0/t-music.mp3') });
+  run(['-f', 'lavfi', '-i', 'sine=frequency=440:duration=12', '-c:a', 'libmp3lame', MUSIC]);
+  r = await api(`/${id}/edit/music?name=${encodeURIComponent('bài hát.mp3')}`, { method: 'POST', body: readFileSync(MUSIC) });
   const mu = await j(r); assert.equal(r.status, 200, JSON.stringify(mu)); assert.equal(mu.music.file, 'music.mp3'); assert.ok(Math.abs(mu.music.duration - 12) < 0.3);
   r = await api(`/${id}/edit/music?name=x.mp3`, { method: 'POST', body: Buffer.from('không phải âm thanh') }); assert.equal(r.status, 400);
   r = await api(`/${id}/edit/music?name=x.exe`, { method: 'POST', body: Buffer.from('MZ') }); assert.equal(r.status, 400);
@@ -86,7 +89,7 @@ try {
   assert.deepEqual(both.map((x) => x.status).sort(), [202, 409], 'chỉ một bản dựng được chạy khi hai yêu cầu đến cùng lúc');
   r = await api(`/${id}/edit/render`, { method: 'POST', body: '{}' }); assert.equal(r.status, 409, 'không cho chạy hai bản dựng cùng lúc');
   // đang dựng thì không cho đổi nhạc/LUT (ffmpeg đang đọc các tệp này)
-  r = await api(`/${id}/edit/music?name=b.mp3`, { method: 'POST', body: readFileSync('/tmp/claude-0/t-music.mp3') }); assert.equal(r.status, 409);
+  r = await api(`/${id}/edit/music?name=b.mp3`, { method: 'POST', body: readFileSync(MUSIC) }); assert.equal(r.status, 409);
   r = await api(`/${id}/edit/lut?name=x`, { method: 'POST', body: cube }); assert.equal(r.status, 409);
   let s: any; for (let i = 0; i < 120; i++) { await new Promise((x) => setTimeout(x, 500)); s = await j(await api(`/${id}/edit/render`)); if (s.state !== 'running') break; }
   assert.equal(s.state, 'done', JSON.stringify(s)); assert.equal(s.file, '_preview.mp4'); assert.equal(s.percent, 100);

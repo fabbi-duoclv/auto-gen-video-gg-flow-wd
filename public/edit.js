@@ -18,13 +18,15 @@
     green: { f: 'saturate(.6) contrast(1.04)', o: 'rgba(90,130,80,.42)' },
     highkey: { f: 'brightness(1.12) contrast(.9) saturate(.8)', o: 'rgba(235,245,250,.4)' },
   };
+  // URL luôn theo flow của editor (E.id), KHÔNG theo currentFlowId toàn cục: khi rời view, route() đã đổi currentFlowId trước khi leave() lưu dở.
+  const eurl = (path) => API + '/' + E.id + '/' + path;
   const $ = (id) => document.getElementById(id);
   const fmt = (t) => { t = Math.max(0, t); const m = Math.floor(t / 60), s = t - m * 60; return m + ':' + (s < 10 ? '0' : '') + s.toFixed(1); };
 
   const E = {
     id: null, meta: null, st: null, p: null, clips: {}, analysis: null, tl: [], rows: [], total: 0,
     cur: 0, sel: 0, tab: 'shot', playing: false, pps: 21, dirty: false, saving: false, saveTimer: 0, saved: '',
-    es: null, raf: 0, last: 0, tickN: 0, undo: null, peaks: null, slot: 0, job: null, poll: 0, fileAction: null, alive: false,
+    chain: Promise.resolve(true), es: null, raf: 0, last: 0, tickN: 0, undo: null, peaks: null, slot: 0, job: null, poll: 0, fileAction: null, alive: false,
   };
 
   // ─── vào / ra khỏi view ───────────────────────────────────
@@ -36,7 +38,7 @@
     const mr = await fetch(API + '/' + E.id);
     if (!mr.ok) { navigate('/'); return; }
     E.meta = await mr.json();
-    const r = await fetch(apiUrl('edit'));
+    const r = await fetch(eurl('edit'));
     const data = await r.json().catch(() => ({}));
     if (!E.alive) return;
     if (!r.ok) {
@@ -131,24 +133,30 @@
   function relayout() { E.tl = tlItems(); const l = TL.layout(E.tl); E.rows = l.rows; E.total = l.total; }
   const chapters = () => [...new Set(E.p.items.map((i) => i.chapter).filter(Boolean))];
   const chColor = (c) => CH_COLORS[Math.max(0, chapters().indexOf(c)) % CH_COLORS.length];
-  const clipUrl = (file) => apiUrl('output/' + encodeURIComponent(file));
-  const musicUrl = () => apiUrl('edit/music') + '?v=' + encodeURIComponent(E.p.music.name + E.p.music.duration);
+  const clipUrl = (file) => eurl('output/' + encodeURIComponent(file));
+  const musicUrl = () => eurl('edit/music') + '?v=' + encodeURIComponent(E.p.music.name + E.p.music.duration);
   const firstSelectable = () => { const i = E.p.items.findIndex((x) => !x.skip && x.kind === 'shot'); return i < 0 ? 0 : i; };
 
   function changed() { relayout(); drawAll(); markDirty(); }
 
   // ─── lưu ──────────────────────────────────────────────────
   function markDirty() { E.dirty = true; statusText(); clearTimeout(E.saveTimer); E.saveTimer = setTimeout(() => save(false), 700); }
-  async function save(keepalive) {
+  // Mọi lần lưu xếp hàng nối đuôi nhau: không bao giờ có hai PUT cùng bay, nên bản cũ không thể đến sau và ghi đè bản mới.
+  function save(keepalive) {
     clearTimeout(E.saveTimer);
-    if (!E.dirty || !E.alive && !keepalive) return true;
+    const run = () => doSave(keepalive);
+    return (E.chain = E.chain.then(run, run));
+  }
+  async function doSave(keepalive) {
+    if (!E.dirty || (!E.alive && !keepalive)) return true;
     E.saving = true; statusText();
     const snapshot = JSON.stringify(E.p);
     try {
-      const r = await fetch(apiUrl('edit'), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: snapshot, keepalive: !!keepalive && new Blob([snapshot]).size < 60000 }); // keepalive bị trình duyệt giới hạn 64 KiB
+      const r = await fetch(eurl('edit'), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: snapshot, keepalive: !!keepalive && new Blob([snapshot]).size < 60000 }); // keepalive bị trình duyệt giới hạn 64 KiB
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error || 'Lưu thất bại');
       if (JSON.stringify(E.p) === snapshot) E.dirty = false;
+      else if (E.alive) markDirty(); // có chỉnh sửa mới trong lúc lưu: hẹn lưu lại
       E.analysis = d.analysis; E.saved = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
       E.saving = false; statusText(); stats();
       return true;
@@ -168,6 +176,7 @@
   }
 
   function stats() {
+    if (!$('stShots')) return; // đã rời view Edit (lưu dở hoàn tất sau khi DOM bị thay)
     const a = E.analysis || { readyShots: 0, totalShots: 0, missing: [] };
     const shots = E.p.items.filter((i) => i.kind === 'shot' && !i.skip);
     const missing = E.tl.filter((i, k) => i.kind === 'shot' && !i.skip && i.missing).length;
@@ -338,6 +347,7 @@
   }
 
   function select(i, seek) {
+    if (!E.p.items.length) return;
     E.sel = Math.max(0, Math.min(E.p.items.length - 1, i));
     if (seek) E.cur = Math.min(Math.max(0, E.total - 0.01), E.rows[E.sel].t0 + 0.01);
     if (E.p.items[E.sel].kind === 'title') E.tab = 'titles'; else if (E.tab === 'titles') E.tab = 'shot';
@@ -406,7 +416,7 @@
         [['pic', '9:16, khung hình 16:9', 'Giống hai video mẫu: ảnh 16:9 nằm giữa nền đen, lời hát ở đáy.'], ['full', '9:16 phủ kín', 'Cắt ảnh 16:9 thành dọc: mất hai bên.'], ['wide', '16:9', 'Cho YouTube ngang.']].map((r) => '<div class="rc' + (p.canvas === r[0] ? ' on' : '') + '" data-c="' + r[0] + '" tabindex="0" role="button"><div class="mini">' + (r[0] === 'pic' ? '<b style="top:22px;height:15px"></b>' : r[0] === 'full' ? '<b style="top:0;bottom:0"></b>' : '') + '</div><div><strong>' + r[1] + '</strong><small>' + r[2] + '</small></div></div>').join('') + '</div>' +
         '<div class="grid2" style="margin-top:16px"><div class="card"><h4>Độ phân giải</h4><select class="sel" id="fRes"><option value="1080"' + (p.resolution === 1080 ? ' selected' : '') + '>' + (p.canvas === 'wide' ? '1920 × 1080' : '1080 × 1920') + '</option><option value="720"' + (p.resolution === 720 ? ' selected' : '') + '>' + (p.canvas === 'wide' ? '1280 × 720' : '720 × 1280') + '</option></select></div>' +
         '<div class="card"><h4>Tên tệp</h4><input class="txt" type="text" id="fName" maxlength="80" value="' + esc(p.outputName) + '"><p class="hint" style="margin-top:6px">Thêm .mp4 tự động.</p></div></div>' +
-        '<div class="card" style="margin-top:14px"><h4>Bản đã xuất</h4>' + (fin.length ? fin.map((f) => '<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line)"><b style="font-size:13px">' + esc(f.file) + '</b><span class="chip">' + (f.size / 1048576).toFixed(1) + ' MB</span><span class="hint">' + new Date(f.modified).toLocaleString('vi-VN') + '</span><span style="margin-left:auto" class="row"><button class="btn-outline btn-sm" data-act="play" data-f="' + esc(f.file) + '">Xem</button><a class="btn-outline btn-sm" style="text-decoration:none;display:inline-flex;align-items:center" href="' + apiUrl('edit/final/' + encodeURIComponent(f.file)) + '?download=1">Tải về</a></span></div>').join('') : '<p class="hint">Chưa có bản xuất nào.</p>') + '</div>';
+        '<div class="card" style="margin-top:14px"><h4>Bản đã xuất</h4>' + (fin.length ? fin.map((f) => '<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line)"><b style="font-size:13px">' + esc(f.file) + '</b><span class="chip">' + (f.size / 1048576).toFixed(1) + ' MB</span><span class="hint">' + new Date(f.modified).toLocaleString('vi-VN') + '</span><span style="margin-left:auto" class="row"><button class="btn-outline btn-sm" data-act="play" data-f="' + esc(f.file) + '">Xem</button><a class="btn-outline btn-sm" style="text-decoration:none;display:inline-flex;align-items:center" href="' + eurl('edit/final/' + encodeURIComponent(f.file)) + '?download=1">Tải về</a></span></div>').join('') : '<p class="hint">Chưa có bản xuất nào.</p>') + '</div>';
     }
   }
 
@@ -485,7 +495,7 @@
     const file = e.target.files[0], act = E.fileAction; if (!file || !act) return;
     try {
       if (act.kind === 'lyrics') {
-        const r = await fetch(apiUrl('edit/lyrics'), { method: 'POST', body: await file.text() });
+        const r = await fetch(eurl('edit/lyrics'), { method: 'POST', body: await file.text() });
         const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Không đọc được lời');
         if (E.p.lyrics.length && !confirm('Thay ' + E.p.lyrics.length + ' dòng lời hiện tại bằng ' + d.lines.length + ' dòng từ tệp?')) return;
         // Tệp .lrc/.srt tính theo bài hát; video bắt đầu nhạc ở `offset` nên phải trừ đi để lời khớp nhạc.
@@ -494,14 +504,14 @@
         E.p.lyrics = lines; changed(); inspector();
         toast('Đã nhập ' + lines.length + ' dòng lời' + (off > 0 ? ' (đã dời -' + off.toFixed(1) + ' s theo điểm bắt đầu nhạc' + (lines.length < d.lines.length ? ', bỏ ' + (d.lines.length - lines.length) + ' dòng nằm trước đó' : '') + ')' : ''), 'success');
       } else if (act.kind === 'lut') {
-        const r = await fetch(apiUrl('edit/lut?name=' + encodeURIComponent(file.name)), { method: 'POST', body: file });
+        const r = await fetch(eurl('edit/lut?name=' + encodeURIComponent(file.name)), { method: 'POST', body: file });
         const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Không nhập được LUT');
         if (!E.st.luts.includes(d.name)) E.st.luts.push(d.name);
-        E.p.chapterGrades[act.arg] = 'lut:' + d.name; await save(false); inspector(); preview(true); toast('Đã nhập LUT ' + d.name, 'success');
+        E.p.chapterGrades[act.arg] = 'lut:' + d.name; markDirty(); await save(false); inspector(); preview(true); toast('Đã nhập LUT ' + d.name, 'success');
       } else if (act.kind === 'music') {
         if (file.size > 100 * 1024 * 1024) throw new Error('Tệp nhạc quá lớn (tối đa 100 MB)');
         toast('Đang tải nhạc…'); await save(false);
-        const r = await fetch(apiUrl('edit/music?name=' + encodeURIComponent(file.name)), { method: 'POST', body: file });
+        const r = await fetch(eurl('edit/music?name=' + encodeURIComponent(file.name)), { method: 'POST', body: file });
         const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Không tải được nhạc');
         Object.assign(E.p.music, { file: d.music.file, name: d.music.name, duration: d.music.duration, offset: 0 });
         E.dirty = true; await save(false); loadWave(); changed(); inspector(); toast('Đã thêm nhạc (' + d.music.duration.toFixed(1) + ' s)', 'success');
@@ -545,14 +555,14 @@
 
   // ─── xuất / render ────────────────────────────────────────
   function connectSSE() {
-    E.es = new EventSource(apiUrl('events'));
+    E.es = new EventSource(eurl('events'));
     E.es.addEventListener('render', (e) => onJob(JSON.parse(e.data)));
   }
   function pollJob() {
     clearTimeout(E.poll);
     E.poll = setTimeout(async () => {
       if (!E.alive || !E.job || E.job.state !== 'running') return;
-      try { const r = await fetch(apiUrl('edit/render')); const j = await r.json(); if (j) onJob(j); } catch (e) { /* thử lại */ }
+      try { const r = await fetch(eurl('edit/render')); const j = await r.json(); if (j) onJob(j); } catch (e) { /* thử lại */ }
       pollJob();
     }, 1500);
   }
@@ -565,14 +575,14 @@
     const bp = $('btnPrev'), be = $('btnExport'); if (bp) bp.disabled = be.disabled = j.state === 'running';
     if (j.state === 'running') return;
     if (bp) bp.disabled = be.disabled = false;
-    fetch(apiUrl('edit')).then((r) => r.json()).then((d) => { if (E.alive && d.finals) { E.st.finals = d.finals; if (E.tab === 'output') inspector(); } }).catch(() => {});
+    fetch(eurl('edit')).then((r) => r.json()).then((d) => { if (E.alive && d.finals) { E.st.finals = d.finals; if (E.tab === 'output') inspector(); } }).catch(() => {});
     if (j.state === 'error') { showToast('Dựng lỗi: ' + (j.error || '').split('\n')[0], 'error', 8000); finishDialog(j); }
     else if (j.state === 'cancelled') { toast('Đã hủy dựng'); finishDialog(j); }
     else if (j.state === 'done') { if (j.preview) { playFinal(j.file); } else finishDialog(j); }
   }
   async function startRender(preview) {
     if (!(await save(false))) return false;
-    const r = await fetch(apiUrl('edit/render'), { method: 'POST', body: JSON.stringify({ preview }) });
+    const r = await fetch(eurl('edit/render'), { method: 'POST', body: JSON.stringify({ preview }) });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) { showToast(d.error || 'Không bắt đầu được', 'error', 6000); return false; }
     onJob(d.render); pollJob(); return true;
@@ -586,7 +596,7 @@
   async function openExport() {
     if (E.job && E.job.state === 'running') return;
     if (!(await save(false))) return;
-    const r = await fetch(apiUrl('edit')); const d = await r.json(); if (!r.ok) { showToast(d.error, 'error'); return; }
+    const r = await fetch(eurl('edit')); const d = await r.json(); if (!r.ok) { showToast(d.error, 'error'); return; }
     E.st.finals = d.finals; E.analysis = d.analysis; stats();
     const a = d.analysis, p = d.project;
     const dims = p.canvas === 'wide' ? (p.resolution === 1080 ? '1920 × 1080' : '1280 × 720') : (p.resolution === 1080 ? '1080 × 1920' : '720 × 1280');
@@ -610,18 +620,18 @@
     if (j.state === 'done') {
       $('pt').innerHTML = '<b style="color:var(--ok)">Xong</b> trong ' + j.seconds + ' s: ' + esc(j.file);
       $('pb').style.width = '100%';
-      act.innerHTML = '<button class="btn-outline" onclick="Ed.closeDlg()">Đóng</button><button class="btn-outline" onclick="Ed.play(\'' + encodeURIComponent(j.file) + '\')">Xem</button><a class="btn-primary" style="text-decoration:none;display:inline-flex;align-items:center;padding:0 15px;min-height:36px;border-radius:7px" href="' + apiUrl('edit/final/' + encodeURIComponent(j.file)) + '?download=1">Tải về</a>';
+      act.innerHTML = '<button class="btn-outline" onclick="Ed.closeDlg()">Đóng</button><button class="btn-outline" onclick="Ed.play(\'' + encodeURIComponent(j.file) + '\')">Xem</button><a class="btn-primary" style="text-decoration:none;display:inline-flex;align-items:center;padding:0 15px;min-height:36px;border-radius:7px" href="' + eurl('edit/final/' + encodeURIComponent(j.file)) + '?download=1">Tải về</a>';
     } else {
       $('pt').innerHTML = j.state === 'error' ? '<span style="color:var(--bad)">' + esc((j.error || '').split('\n')[0]) + '</span>' : 'Đã hủy';
       act.innerHTML = '<button class="btn-outline" onclick="Ed.closeDlg()">Đóng</button>';
     }
   }
-  async function cancel() { await fetch(apiUrl('edit/render/cancel'), { method: 'POST' }); }
+  async function cancel() { await fetch(eurl('edit/render/cancel'), { method: 'POST' }); }
   function closeDlg() { closeDialog(); const b = $('dialogBox'); if (b) b.classList.remove('wide'); }
   function playFinal(file) {
     file = decodeURIComponent(file);
     const m = $('modal'), c = $('modalContent');
-    c.innerHTML = '<video src="' + apiUrl('edit/final/' + encodeURIComponent(file)) + '?t=' + Date.now() + '" controls autoplay style="max-height:85vh;max-width:90vw"></video>';
+    c.innerHTML = '<video src="' + eurl('edit/final/' + encodeURIComponent(file)) + '?t=' + Date.now() + '" controls autoplay style="max-height:85vh;max-width:90vw"></video>';
     m.classList.add('active'); closeDlg();
   }
   function toast(m, type) { showToast(m, type || 'info', 3600); }

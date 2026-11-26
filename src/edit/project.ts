@@ -42,16 +42,19 @@ export function buildDefaultProject(scenes: SceneData[], flowName = ''): EditPro
   const items: EditItem[] = [];
   const chapters: string[] = [];
   let cur = '';
+  // id phải duy nhất: chương quay lại (A, B, A) hoặc số cảnh lặp trong Excel không được tạo id trùng (sẽ làm Edit không mở được)
+  const usedIds = new Set<string>();
+  const uid = (base: string) => { let id = base, n = 1; while (usedIds.has(id)) id = `${base}#${++n}`; usedIds.add(id); return id; };
   for (const { s, p } of parsed) {
     if (plate && s === plate.s) continue;
     if (p && p.chapter !== cur) {
       cur = p.chapter;
       if (!chapters.includes(cur)) chapters.push(cur);
-      items.push({ id: `t:${cur}`, kind: 'title', sceneNumber: '', chapter: cur, code: '', size: cur, face: false, who: '', start: 0, use: TITLE_DUR, sugg: TITLE_DUR, out: 'cut', skip: false });
+      items.push({ id: uid(`t:${cur}`), kind: 'title', sceneNumber: '', chapter: cur, code: '', size: cur, face: false, who: '', start: 0, use: TITLE_DUR, sugg: TITLE_DUR, out: 'cut', skip: false });
     }
     const use = p ? p.dur : Math.max(0.5, Number(s.duration) || 3);
     items.push({
-      id: `s:${s.sceneNumber}`, kind: 'shot', sceneNumber: s.sceneNumber, chapter: cur,
+      id: uid(`s:${s.sceneNumber}`), kind: 'shot', sceneNumber: s.sceneNumber, chapter: cur,
       code: p ? p.code : `#${s.sceneNumber}`, size: p ? p.size : s.sceneName, face: p ? p.face : false,
       who: (s.characterNames || []).join(', '), start: DEFAULT_START, use, sugg: use,
       out: /dissolve/i.test(s.transition || '') ? 'dissolve' : 'cut', skip: false,

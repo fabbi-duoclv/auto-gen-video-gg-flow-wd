@@ -20,6 +20,7 @@ import { discoverClips } from '../src/edit/clips.js';
 import { analyze, planRender, runRender, canvasSize } from '../src/edit/render.js';
 import { resolveFfmpeg, probeDuration } from '../src/edit/ffmpeg.js';
 import { serveFile } from '../src/web/serve-file.js';
+import { replaceFile } from '../src/edit/service.js';
 import type { EditProject } from '../src/edit/types.js';
 
 let n = 0;
@@ -288,6 +289,33 @@ const XLSX_B = resolve('wedding-video/excel/album-phong-cach.xlsx');
   assert.equal(after, before, 'không để lại thư mục tạm khi lập kế hoạch lỗi');
   rmSync(root2, { recursive: true, force: true });
   ok('planRender lỗi không để lại thư mục tạm');
+}
+
+// ── 8. lỗi từ review của Qodo ──────────────────────────────
+{
+  // id duy nhất khi chương quay lại (A, B, A) hoặc số cảnh lặp
+  const sc = (num: string, name: string) => ({ sceneNumber: num, sceneName: name, type: 'AI-VID', duration: 3, transition: '', characterNames: [] }) as never;
+  const scenes = [sc('1', 'A1.01 · Chương 1 · Cổ · rộng · dùng 2,0 s · mặt: có'), sc('2', 'A2.01 · Chương 2 · Nay · rộng · dùng 2,0 s · mặt: có'),
+    sc('3', 'A1.02 · Chương 1 · Cổ · rộng · dùng 2,0 s · mặt: có'), sc('3', 'A1.03 · Chương 1 · Cổ · rộng · dùng 2,0 s · mặt: không')];
+  const proj = buildDefaultProject(scenes, 'x');
+  const ids = proj.items.map((i) => i.id);
+  assert.equal(new Set(ids).size, ids.length, `id trùng: ${ids.join(',')}`);
+  assert.doesNotThrow(() => normalizeProject(proj, { luts: [], fonts: ['Lora'] }), 'normalizeProject nhận dự án mặc định có chương quay lại');
+  assert.equal(reconcile(proj, buildDefaultProject(scenes, 'x')).items.length, proj.items.length);
+  // Excel không có cảnh video nào: không có shot (service báo lỗi rõ thay vì để UI hỏng)
+  const none = buildDefaultProject([{ sceneNumber: '1', sceneName: 'ảnh', type: 'AI-IMG' } as never], 'x');
+  assert.ok(!none.items.some((i) => i.kind === 'shot'));
+  ok('buildDefaultProject: id duy nhất (chương quay lại, cảnh lặp); Excel không có video → không có shot');
+
+  // replaceFile: thay thế an toàn, thất bại thì giữ nguyên bản cũ
+  const d = mkdtempSync(join(tmpdir(), 'edit-replace-'));
+  writeFileSync(join(d, 'old.mp4'), 'OLD'); writeFileSync(join(d, 'new.part'), 'NEW');
+  replaceFile(join(d, 'new.part'), join(d, 'old.mp4'));
+  assert.equal(readFileSync(join(d, 'old.mp4'), 'utf8'), 'NEW'); assert.ok(!existsSync(join(d, 'new.part')) && !existsSync(join(d, 'old.mp4.old')));
+  assert.throws(() => replaceFile(join(d, 'khong-co.part'), join(d, 'old.mp4')));
+  assert.equal(readFileSync(join(d, 'old.mp4'), 'utf8'), 'NEW', 'thay thế lỗi không làm mất bản đang có'); assert.ok(!existsSync(join(d, 'old.mp4.old')));
+  rmSync(d, { recursive: true, force: true });
+  ok('replaceFile: thay thế bản cũ; lỗi giữa chừng không làm mất bản xuất cũ');
 }
 
 console.log(`\nTẤT CẢ ĐỀU QUA (${n} nhóm)`);
