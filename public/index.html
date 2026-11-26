@@ -4,240 +4,320 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GG Flow Automation</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 28'%3E%3Crect x='3' y='10' width='22' height='15' rx='3' fill='%238c2f5b'/%3E%3Cpath d='M3.8 6.9 22.6 3l1.1 4.6L4.9 11.5z' fill='%238c2f5b' opacity='.55'/%3E%3Cpath d='m11 14.5 6 3.5-6 3.5z' fill='%23fff'/%3E%3C/svg%3E">
 <style>
+  /* Layout idea: slim header, a run bar, then a workspace of shot list (left) and shot detail (right).
+     Neutrals lean plum, one berry accent; green/amber/red/blue/teal are reserved for state. */
   :root {
-    --bg: #f5f7fa;
-    --bg-card: #ffffff;
-    --bg-hover: #f0f4ff;
-    --bg-selected: #e8eeff;
-    --border: #e2e8f0;
-    --text: #1a202c;
-    --text-secondary: #64748b;
-    --text-muted: #94a3b8;
-    --primary: #6366f1;
-    --primary-light: #e0e7ff;
-    --primary-hover: #4f46e5;
-    --success: #10b981;
-    --success-light: #d1fae5;
-    --warning: #f59e0b;
-    --warning-light: #fef3c7;
-    --danger: #ef4444;
-    --danger-light: #fee2e2;
-    --info: #3b82f6;
-    --info-light: #dbeafe;
-    --purple: #8b5cf6;
-    --purple-light: #ede9fe;
-    --shadow: 0 1px 3px rgba(0,0,0,0.08);
-    --shadow-lg: 0 4px 12px rgba(0,0,0,0.1);
+    --bg: #f5f3f6;
+    --surface: #ffffff;
+    --surface-2: #faf8fb;
+    --line: #e7e2ea;
+    --line-strong: #d3ccd8;
+    --ink: #241e29;
+    --ink-2: #5a5062;
+    --ink-3: #766c7e;
+    --accent: #8c2f5b;
+    --accent-hover: #72244a;
+    --accent-soft: #f7e8ef;
+    --ok: #1b7447;      --ok-soft: #e1f2e9;
+    --warn: #8f5500;    --warn-soft: #fbeed4;
+    --bad: #b3261e;     --bad-soft: #fbe5e2;
+    --work: #2a5ca3;    --work-soft: #e2ebf8;
+    --video: #0e6f66;   --video-soft: #d9f1ee;
     --radius: 8px;
+    --shadow: 0 1px 2px rgba(36,30,41,.06), 0 1px 3px rgba(36,30,41,.05);
+    --shadow-lg: 0 10px 28px rgba(36,30,41,.16);
+    --font-body: 'Be Vietnam Pro', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --font-display: 'Bricolage Grotesque', 'Be Vietnam Pro', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+  html, body { height: 100%; }
+  body { font-family: var(--font-body); font-size: 14px; line-height: 1.5; background: var(--bg); color: var(--ink); display: flex; flex-direction: column; overflow: hidden; -webkit-font-smoothing: antialiased; }
   #app { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   /* Header */
-  .header { display: flex; align-items: center; justify-content: space-between; padding: 10px 20px; background: var(--bg-card); border-bottom: 1px solid var(--border); flex-shrink: 0; box-shadow: var(--shadow); z-index: 10; }
-  .header-left { display: flex; align-items: center; gap: 12px; }
-  .header-left h1 { font-size: 20px; font-weight: 700; background: linear-gradient(135deg, var(--primary), var(--purple)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; cursor: pointer; }
-  .header-actions { display: flex; gap: 8px; align-items: center; }
+  .app-header { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; padding: 8px 20px; min-height: 56px; background: var(--surface); border-bottom: 1px solid var(--line); flex-shrink: 0; z-index: 10; }
+  .brand { display: flex; align-items: center; gap: 9px; cursor: pointer; border: 0; background: none; padding: 0; color: var(--ink); font-family: var(--font-display); font-size: 19px; font-weight: 700; letter-spacing: -.01em; min-height: 36px; }
+  .brand-mark { width: 26px; height: 26px; color: var(--accent); flex-shrink: 0; }
+  .crumb-sep { color: var(--line-strong); font-size: 18px; }
+  .crumb-name { font-family: var(--font-display); font-weight: 600; font-size: 17px; min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .crumb-meta { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1 1 auto; }
+  .header-actions { display: flex; gap: 8px; align-items: center; margin-left: auto; flex-wrap: wrap; }
 
   /* Buttons */
-  button { padding: 8px 18px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; transition: all .15s; }
-  .btn-primary { background: var(--primary); color: white; }
-  .btn-primary:hover { background: var(--primary-hover); transform: translateY(-1px); box-shadow: 0 2px 8px rgba(99,102,241,.3); }
-  .btn-primary:disabled { background: #cbd5e1; color: #94a3b8; cursor: not-allowed; transform: none; box-shadow: none; }
-  .btn-danger { background: var(--danger); color: white; }
-  .btn-danger:hover { background: #dc2626; }
-  .btn-danger:disabled { background: #cbd5e1; color: #94a3b8; cursor: not-allowed; }
-  .btn-outline { background: white; color: var(--text); border: 1px solid var(--border); }
-  .btn-outline:hover { background: var(--bg); border-color: var(--primary); color: var(--primary); }
-  .btn-success { background: var(--success); color: white; }
-  .btn-success:hover { background: #059669; }
-  .btn-import { background: linear-gradient(135deg, var(--info), var(--primary)); color: white; }
-  .btn-import:hover { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(59,130,246,.3); }
-  .btn-sm { padding: 3px 8px; font-size: 13px; }
+  button { font-family: inherit; }
+  .header-actions button, .dialog-actions button, .empty-state button, .page-head button, .btn-sm { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 0 15px; border-radius: 7px; border: 1px solid transparent; cursor: pointer; font-size: 13.5px; font-weight: 600; line-height: 1; transition: background .15s, border-color .15s, color .15s, box-shadow .15s; }
+  .btn-sm { min-height: 30px; padding: 0 11px; font-size: 12.5px; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-danger { background: var(--surface); color: var(--bad); border-color: #e3b4b0 !important; }
+  .btn-danger:hover { background: var(--bad-soft); }
+  .btn-outline, .btn-import { background: var(--surface); color: var(--ink); border-color: var(--line-strong) !important; }
+  .btn-outline:hover, .btn-import:hover { border-color: var(--accent) !important; color: var(--accent); background: var(--accent-soft); }
+  .btn-primary:disabled, .btn-danger:disabled { background: var(--surface-2); color: var(--ink-3); border-color: var(--line) !important; cursor: not-allowed; }
+  .btn-success { background: var(--ok); color: #fff; }
+  .link-btn { background: none; border: 0; color: var(--accent); font-size: 12.5px; font-weight: 600; cursor: pointer; padding: 4px 6px; border-radius: 5px; }
+  .link-btn:hover { background: var(--accent-soft); }
 
-  /* Status */
-  .status-badge { padding: 4px 12px; border-radius: 20px; font-size: 13px; font-weight: 600; }
-  .status-idle,.status-created { background: #f1f5f9; color: #64748b; }
-  .status-running { background: var(--success-light); color: var(--success); animation: pulse 2s infinite; }
-  .status-stopping,.status-stopped { background: var(--warning-light); color: var(--warning); }
-  .status-completed { background: var(--success-light); color: var(--success); }
-  .status-error { background: var(--danger-light); color: var(--danger); }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.7} }
+  /* Status badge */
+  .status-badge { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px 2px 8px; border-radius: 12px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .status-badge::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .status-idle, .status-created { background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--line); }
+  .status-running { background: var(--work-soft); color: var(--work); }
+  .status-running::before { animation: pulse 1.4s infinite; }
+  .status-stopping, .status-stopped { background: var(--warn-soft); color: var(--warn); }
+  .status-completed { background: var(--ok-soft); color: var(--ok); }
+  .status-error { background: var(--bad-soft); color: var(--bad); }
+  @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .3 } }
 
-  /* Tags */
-  .tag { font-size: 12px; padding: 2px 8px; border-radius: 4px; font-weight: 600; letter-spacing: .3px; }
-  .tag-vid { background: var(--purple-light); color: var(--purple); }
-  .tag-img { background: var(--info-light); color: var(--info); }
-  .tag-stock { background: #f1f5f9; color: #94a3b8; }
-  .tag-step { font-size: 11px; padding: 2px 6px; border-radius: 10px; font-weight: 600; }
-  .step-waiting { background: #f1f5f9; color: #94a3b8; }
-  .step-image-gen, .step-image-download { background: var(--info-light); color: var(--info); }
-  .step-video-gen, .step-video-download { background: var(--purple-light); color: var(--purple); }
-  .step-complete { background: var(--success-light); color: var(--success); }
-  .step-failed { background: var(--danger-light); color: var(--danger); }
+  /* Chips and tags */
+  .chip { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 500; padding: 1px 8px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); color: var(--ink-2); white-space: nowrap; }
+  .chip-face-yes { background: var(--accent-soft); border-color: #ecc9d9; color: var(--accent); font-weight: 600; }
+  .tag { font-size: 11px; padding: 1px 7px; border-radius: 4px; font-weight: 700; letter-spacing: .04em; }
+  .tag-vid { background: var(--video-soft); color: var(--video); }
+  .tag-img { background: var(--work-soft); color: var(--work); }
+  .tag-stock { background: var(--surface-2); color: var(--ink-3); border: 1px solid var(--line); }
+  .tag-step { font-size: 11.5px; padding: 1px 9px; border-radius: 10px; font-weight: 600; }
+  .step-waiting { background: var(--surface-2); color: var(--ink-3); border: 1px solid var(--line); }
+  .step-image-gen, .step-image-download { background: var(--work-soft); color: var(--work); }
+  .step-video-gen, .step-video-download { background: var(--video-soft); color: var(--video); }
+  .step-complete { background: var(--ok-soft); color: var(--ok); }
+  .step-failed { background: var(--bad-soft); color: var(--bad); }
 
-  /* Summary */
-  .summary { display: flex; gap: 16px; padding: 8px 20px; background: var(--bg-card); border-bottom: 1px solid var(--border); flex-shrink: 0; align-items: center; flex-wrap: wrap; }
-  .summary-item { font-size: 13px; color: var(--text-secondary); display: flex; align-items: center; gap: 4px; }
-  .summary-item strong { color: var(--text); font-size: 18px; }
-  .summary-settings { margin-left: auto; display: flex; gap: 10px; align-items: center; }
-  .summary-settings label { font-size: 13px; color: var(--text-secondary); display: flex; align-items: center; gap: 3px; cursor: pointer; }
-  select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; font-size: 14px; }
+  /* Run bar */
+  .runbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px; padding: 10px 20px; background: var(--surface); border-bottom: 1px solid var(--line); flex-shrink: 0; }
+  .stats { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 20px; }
+  .stat { display: flex; align-items: baseline; gap: 6px; font-size: 13px; color: var(--ink-2); }
+  .stat b { font-family: var(--font-display); font-size: 21px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .stat-photos { border: 1px solid; border-radius: 16px; padding: 3px 12px 3px 10px; cursor: pointer; background: none; font: inherit; align-items: center; font-size: 12.5px; font-weight: 600; }
+  .stat-photos b { font-size: 14px; color: inherit; }
+  .stat-photos.ok { color: var(--ok); background: var(--ok-soft); border-color: #bfe0cd; }
+  .stat-photos.warn { color: var(--warn); background: var(--warn-soft); border-color: #ecd29b; }
+  .settings { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+  .field { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-2); }
+  select { font: inherit; font-size: 13px; background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong); border-radius: 7px; min-height: 30px; padding: 0 8px; cursor: pointer; }
+  select:hover { border-color: var(--accent); }
+  .toggle { position: relative; }
+  .toggle input { position: absolute; opacity: 0; pointer-events: none; }
+  .toggle span { display: inline-flex; align-items: center; min-height: 30px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 16px; background: var(--surface); font-size: 12.5px; font-weight: 500; color: var(--ink-2); cursor: pointer; transition: all .15s; }
+  .toggle span:hover { border-color: var(--accent); }
+  .toggle input:checked + span { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .toggle input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-  /* Empty */
-  .empty-state { text-align: center; padding: 80px 20px; }
-  .empty-icon { font-size: 48px; margin-bottom: 16px; }
-  .empty-state h2 { font-size: 18px; color: var(--text-secondary); margin-bottom: 8px; font-weight: 600; }
-  .empty-state p { font-size: 13px; color: var(--text-muted); margin-bottom: 20px; }
+  /* Workspace */
+  .main { display: grid; grid-template-columns: minmax(0, 1fr) 420px; flex: 1; min-height: 0; }
+  .left-panel { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--surface); }
+  .tabs { display: flex; gap: 2px; background: var(--surface); border-bottom: 1px solid var(--line); flex-shrink: 0; padding: 0 12px; }
+  .tab { display: inline-flex; align-items: center; gap: 7px; padding: 12px 12px 10px; font-size: 13.5px; font-weight: 600; color: var(--ink-2); cursor: pointer; background: none; border: 0; border-bottom: 2px solid transparent; transition: color .15s; }
+  .tab:hover { color: var(--ink); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab .count { font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums; padding: 0 7px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); color: var(--ink-2); }
+  .tab.active .count { background: var(--accent-soft); border-color: #ecc9d9; color: var(--accent); }
+  .tab-content { flex: 1; overflow-y: auto; min-height: 0; }
 
-  /* Main */
-  .main { display: grid; grid-template-columns: 1fr 380px; flex: 1; overflow: hidden; min-height: 0; }
+  /* Shot list */
+  .list-toolbar { display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: var(--surface-2); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 3; font-size: 12.5px; color: var(--ink-2); }
+  .list-toolbar .spacer { flex: 1; }
+  input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; cursor: pointer; flex-shrink: 0; }
+  .shot-group { display: flex; align-items: center; gap: 12px; padding: 9px 16px; background: var(--bg); border-bottom: 1px solid var(--line); border-top: 1px solid var(--line); position: sticky; top: 41px; z-index: 2; }
+  .shot-group .g-name { font-family: var(--font-display); font-weight: 700; font-size: 14px; }
+  .shot-group .g-meta { font-size: 12px; color: var(--ink-3); margin-left: auto; font-variant-numeric: tabular-nums; }
+  .shot { display: grid; grid-template-columns: 16px 42px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 11px 16px; border-bottom: 1px solid var(--line); cursor: pointer; transition: background .1s; }
+  .shot:hover { background: var(--surface-2); }
+  .shot.selected { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+  .shot-num { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 13px; color: var(--accent); padding-top: 1px; }
+  .shot-title { font-size: 14px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+  .shot-title .code { font-variant-numeric: tabular-nums; color: var(--ink-3); font-weight: 500; margin-right: 6px; }
+  .shot-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+  .shot-prompt { color: var(--ink-3); font-size: 12.5px; margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .shot-side { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
 
-  /* Left */
-  .left-panel { display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
-  .tabs { display: flex; background: var(--bg-card); border-bottom: 1px solid var(--border); flex-shrink: 0; padding: 0 16px; }
-  .tab { padding: 8px 16px; font-size: 13px; color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent; font-weight: 500; transition: all .15s; }
-  .tab:hover { color: var(--text-secondary); }
-  .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
-  .tab-content { flex: 1; overflow-y: auto; background: var(--bg); min-height: 0; }
-
-  /* Table */
-  .scene-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  .scene-table th { text-align: left; padding: 8px 12px; background: var(--bg-card); color: var(--text-muted); font-weight: 500; font-size: 13px; text-transform: uppercase; letter-spacing: .5px; position: sticky; top: 0; z-index: 1; border-bottom: 1px solid var(--border); }
-  .scene-table td { padding: 8px 12px; border-bottom: 1px solid #f0f0f0; }
-  .scene-table tr:hover td { background: var(--bg-hover); }
-  .scene-table tr.selected td { background: var(--bg-selected); }
-  .scene-table .scene-name-cell { font-weight: 500; }
-  .prompt-preview { color: var(--text-muted); font-size: 13px; max-width: 350px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
-  .char-list { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
-
-  .char-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  .char-table th { text-align: left; padding: 8px 12px; background: var(--bg-card); color: var(--text-muted); font-weight: 500; font-size: 13px; text-transform: uppercase; letter-spacing: .5px; position: sticky; top: 0; border-bottom: 1px solid var(--border); }
-  .char-table td { padding: 8px 12px; border-bottom: 1px solid #f0f0f0; }
-  .char-name { font-weight: 600; color: var(--text); }
-  .photo-cell { display: flex; align-items: center; gap: 12px; }
-  .photo-drop { width: 84px; height: 104px; border: 2px dashed var(--border); border-radius: 10px; background: var(--bg); display: flex; align-items: center; justify-content: center; text-align: center; font-size: 11px; line-height: 1.3; color: var(--text-muted); cursor: pointer; overflow: hidden; flex-shrink: 0; transition: all .15s; }
-  .photo-drop:hover, .photo-drop.drag { border-color: var(--primary); background: var(--bg-hover); color: var(--primary); }
+  /* People (reference photos) */
+  .photo-hint { margin: 14px 16px 4px; padding: 10px 14px; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius); font-size: 13px; color: var(--ink-2); line-height: 1.55; }
+  .people { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; padding: 14px 16px 20px; }
+  .person { display: flex; gap: 16px; padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); min-width: 0; }
+  .photo-drop { width: 104px; height: 132px; border: 2px dashed var(--line-strong); border-radius: 10px; background: var(--surface-2); display: flex; align-items: center; justify-content: center; text-align: center; font-size: 12px; line-height: 1.35; color: var(--ink-3); cursor: pointer; overflow: hidden; flex-shrink: 0; transition: all .15s; padding: 6px; }
+  .photo-drop:hover, .photo-drop.drag { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+  .photo-drop:has(img) { border-style: solid; border-color: var(--line); padding: 0; }
   .photo-drop img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .photo-info { font-size: 12px; color: var(--text-secondary); display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-  .photo-badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 10px; width: fit-content; }
-  .photo-ok { background: #dcfce7; color: #166534; }
-  .photo-excel { background: #fef9c3; color: #854d0e; }
-  .photo-none { background: #fee2e2; color: #991b1b; }
-  .photo-actions { display: flex; gap: 6px; flex-wrap: wrap; }
-  .photo-actions button { font-size: 12px; padding: 3px 10px; border-radius: 6px; border: 1px solid var(--border); background: white; cursor: pointer; color: var(--text); }
-  .photo-actions button:hover { border-color: var(--primary); color: var(--primary); }
-  .photo-actions button:disabled { opacity: .5; cursor: not-allowed; }
-  .photo-path { word-break: break-all; color: var(--text-muted); font-size: 11px; }
-  .photo-hint { margin: 10px 12px; padding: 8px 12px; background: var(--primary-light); border-radius: 8px; font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
-  .char-role { color: var(--text-muted); font-size: 14px; }
+  .person-info { display: flex; flex-direction: column; gap: 8px; min-width: 0; align-items: flex-start; }
+  .person-name { font-family: var(--font-display); font-size: 18px; font-weight: 700; line-height: 1.2; }
+  .person-id { font-size: 12px; color: var(--ink-3); font-weight: 500; margin-left: 6px; font-family: var(--font-body); }
+  .photo-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 12px; }
+  .photo-ok { background: var(--ok-soft); color: var(--ok); }
+  .photo-excel { background: var(--warn-soft); color: var(--warn); }
+  .photo-none { background: var(--bad-soft); color: var(--bad); }
+  .photo-path { word-break: break-all; color: var(--ink-3); font-size: 12px; line-height: 1.45; }
+  .photo-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: auto; }
+  .photo-actions button { min-height: 32px; padding: 0 12px; font-size: 12.5px; font-weight: 600; border-radius: 7px; border: 1px solid var(--line-strong); background: var(--surface); cursor: pointer; color: var(--ink); }
+  .photo-actions button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+  .photo-actions button:disabled { opacity: .45; cursor: not-allowed; }
 
   /* Right panel */
-  .right-panel { display: flex; flex-direction: column; overflow: hidden; min-height: 0; background: var(--bg-card); border-left: 1px solid var(--border); }
-  .right-tabs { display: flex; background: var(--bg-card); border-bottom: 1px solid var(--border); padding: 0 12px; flex-shrink: 0; }
+  .right-panel { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--surface-2); border-left: 1px solid var(--line); }
+  .right-panel .tabs { background: var(--surface-2); }
   .right-tab-content { flex: 1; overflow-y: auto; min-height: 0; }
 
   /* Detail */
-  .detail-content { padding: 16px; }
-  .detail-empty { color: var(--text-muted); font-size: 13px; text-align: center; margin-top: 40px; }
-  .detail-title { font-size: 18px; font-weight: 600; color: var(--text); margin: 8px 0; }
-  .detail-field { margin-bottom: 14px; }
-  .detail-label { font-size: 13px; color: var(--text-muted); margin-bottom: 4px; font-weight: 500; text-transform: uppercase; letter-spacing: .3px; }
-  .detail-value { font-size: 13px; color: var(--text-secondary); }
-  .detail-meta { display: flex; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
-  .detail-meta-item { font-size: 14px; color: var(--text-muted); }
-  .detail-meta-item strong { color: var(--text); }
+  .detail-content { padding: 18px 20px 28px; }
+  .detail-empty { color: var(--ink-3); font-size: 13.5px; text-align: center; margin-top: 56px; }
+  .detail-eyebrow { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; font-size: 12.5px; color: var(--ink-3); font-weight: 500; }
+  .detail-title { font-family: var(--font-display); font-size: 21px; font-weight: 700; line-height: 1.25; margin: 8px 0 14px; text-wrap: balance; letter-spacing: -.01em; }
+  .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; margin-bottom: 18px; }
+  .fact { background: var(--surface); padding: 9px 12px; min-width: 0; }
+  .fact-label { font-size: 11.5px; color: var(--ink-3); font-weight: 500; }
+  .fact-value { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .detail-field { margin-bottom: 16px; }
+  .detail-label { font-size: 12.5px; color: var(--ink-2); margin-bottom: 6px; font-weight: 600; display: flex; justify-content: space-between; gap: 8px; }
+  .detail-label small { font-weight: 400; color: var(--ink-3); }
+  .prompt-edit { width: 100%; background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 10px 12px; font-size: 13px; resize: vertical; min-height: 108px; max-height: 420px; font-family: inherit; line-height: 1.6; transition: border-color .15s, box-shadow .15s; }
+  .prompt-edit:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px rgba(140,47,91,.14); }
 
-  .prompt-edit { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; font-size: 14px; resize: vertical; min-height: 60px; font-family: inherit; line-height: 1.5; transition: border-color .15s; }
-  .prompt-edit:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 0 3px rgba(99,102,241,.1); }
-
-  .progress-bar { height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden; margin-top: 6px; }
-  .progress-fill { height: 100%; border-radius: 3px; transition: width .3s; }
-  .fill-image { background: linear-gradient(90deg, var(--info), #60a5fa); }
-  .fill-video { background: linear-gradient(90deg, var(--purple), #a78bfa); }
-  .fill-complete { background: linear-gradient(90deg, var(--success), #34d399); }
-  .fill-failed { background: var(--danger); }
+  .stepper { display: flex; align-items: center; gap: 0; margin-top: 4px; }
+  .stepper .st { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; color: var(--ink-3); }
+  .stepper .st i { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--line-strong); background: var(--surface); display: grid; place-items: center; font-style: normal; font-size: 11px; line-height: 1; color: #fff; }
+  .stepper .bar { flex: 1; height: 2px; background: var(--line-strong); margin: 0 10px; min-width: 18px; }
+  .stepper .st.done { color: var(--ok); }
+  .stepper .st.done i { background: var(--ok); border-color: var(--ok); }
+  .stepper .st.done + .bar { background: var(--ok); }
+  .stepper .st.now { color: var(--work); }
+  .stepper .st.now i { border-color: var(--work); box-shadow: 0 0 0 3px var(--work-soft); }
+  .stepper .st.fail { color: var(--bad); }
+  .stepper .st.fail i { background: var(--bad); border-color: var(--bad); }
 
   /* Log */
-  .log-content { padding: 8px 12px; font-family: 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace; font-size: 13px; line-height: 1.6; background: #1e293b; color: #cbd5e1; min-height: 100%; }
-  .log-entry { white-space: pre-wrap; word-break: break-all; }
-  .log-info { color: #94a3b8; }
-  .log-success { color: #34d399; }
-  .log-warn { color: #fbbf24; }
-  .log-error { color: #f87171; }
+  .log-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 6px 12px; background: var(--surface-2); border-bottom: 1px solid var(--line); font-size: 12px; color: var(--ink-3); }
+  .log-content { padding: 10px 14px; font-family: var(--font-mono); font-size: 12px; line-height: 1.65; background: #1d1a21; color: #cfc8d6; min-height: calc(100% - 41px); }
+  .log-entry { white-space: pre-wrap; word-break: break-word; }
+  .log-info { color: #a79eb0; }
+  .log-success { color: #5fd49a; }
+  .log-warn { color: #f0c05a; }
+  .log-error { color: #ff8f86; }
 
-  /* Results */
-  .results-bar { display: flex; gap: 8px; padding: 8px 20px; background: var(--bg-card); border-top: 1px solid var(--border); overflow-x: auto; flex-shrink: 0; align-items: center; }
+  /* Results + status bar */
+  .results-bar { display: flex; gap: 8px; padding: 8px 20px; background: var(--surface); border-top: 1px solid var(--line); overflow-x: auto; flex-shrink: 0; align-items: center; }
   .results-bar:empty { display: none; }
-  .results-bar h4 { font-size: 14px; color: var(--text-muted); white-space: nowrap; margin-right: 4px; font-weight: 500; }
-  .result-thumb { width: 64px; height: 36px; object-fit: cover; border-radius: 6px; border: 2px solid var(--border); cursor: pointer; flex-shrink: 0; transition: all .15s; }
-  .result-thumb:hover { border-color: var(--primary); transform: scale(1.05); box-shadow: var(--shadow-lg); }
+  .results-bar h4 { font-size: 12.5px; color: var(--ink-2); white-space: nowrap; margin-right: 4px; font-weight: 600; }
+  .result-thumb { width: 64px; height: 36px; object-fit: cover; border-radius: 6px; border: 2px solid var(--line); cursor: pointer; flex-shrink: 0; transition: all .15s; }
+  .result-thumb:hover { border-color: var(--accent); transform: scale(1.05); box-shadow: var(--shadow-lg); }
+  .statusbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 20px; min-height: 32px; background: var(--surface); border-top: 1px solid var(--line); flex-shrink: 0; font-size: 12.5px; color: var(--ink-2); }
+  .statusbar .meter { display: flex; align-items: center; gap: 10px; font-variant-numeric: tabular-nums; }
+  .statusbar .meter i { display: block; width: 120px; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+  .statusbar .meter i b { display: block; height: 100%; width: 0; background: var(--ok); transition: width .3s; }
 
-  /* Bottom */
-  .bottom-bar { display: flex; align-items: center; justify-content: space-between; padding: 6px 20px; background: var(--bg-card); border-top: 1px solid var(--border); flex-shrink: 0; font-size: 13px; color: var(--text-muted); }
+  /* Empty state */
+  .empty-state { text-align: center; padding: 72px 24px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .empty-mark { width: 56px; height: 56px; border-radius: 16px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; margin-bottom: 10px; }
+  .empty-mark svg { width: 28px; height: 28px; }
+  .empty-state h2 { font-family: var(--font-display); font-size: 20px; font-weight: 700; }
+  .empty-state p { font-size: 13.5px; color: var(--ink-2); max-width: 36ch; margin-bottom: 14px; }
+
+  /* Home */
+  .home-content { flex: 1; overflow-y: auto; }
+  .page { max-width: 1180px; margin: 0 auto; padding: 28px 20px 40px; }
+  .page-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+  .page-head h2 { font-family: var(--font-display); font-size: 28px; font-weight: 700; letter-spacing: -.015em; line-height: 1.1; }
+  .page-head p { color: var(--ink-2); font-size: 13.5px; margin-top: 4px; }
+  .flow-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+  .flow-card { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px 14px; cursor: pointer; transition: border-color .15s, box-shadow .15s, transform .15s; display: flex; flex-direction: column; gap: 14px; overflow: hidden; }
+  .flow-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--line-strong); }
+  .flow-card.s-running::before { background: var(--work); }
+  .flow-card.s-completed::before { background: var(--ok); }
+  .flow-card.s-error::before { background: var(--bad); }
+  .flow-card.s-stopped::before { background: var(--warn); }
+  .flow-card:hover { border-color: var(--accent); box-shadow: var(--shadow-lg); transform: translateY(-1px); }
+  .flow-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+  .flow-card-name { font-family: var(--font-display); font-size: 18px; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+  .flow-card-stats { display: flex; align-items: baseline; gap: 6px; color: var(--ink-2); font-size: 13px; }
+  .flow-card-stats b { font-family: var(--font-display); font-size: 26px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; line-height: 1; }
+  .flow-card-stats .none { font-size: 13.5px; color: var(--ink-3); }
+  .flow-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-3); }
+  .flow-card-actions { display: flex; gap: 2px; margin-right: -6px; }
+  .flow-card-actions button { display: grid; place-items: center; width: 32px; height: 32px; background: none; border: 0; border-radius: 6px; cursor: pointer; color: var(--ink-3); transition: all .15s; }
+  .flow-card-actions button svg { width: 16px; height: 16px; }
+  .flow-card-actions button:hover { background: var(--surface-2); color: var(--accent); }
+  .flow-card-actions .fc-delete:hover { background: var(--bad-soft); color: var(--bad); }
 
   /* Modal (media viewer) */
-  .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:100; align-items:center; justify-content:center; backdrop-filter: blur(4px); }
-  .modal-overlay.active { display:flex; }
-  .modal { background: var(--bg-card); border-radius: 12px; max-width: 90vw; max-height: 90vh; overflow: auto; box-shadow: var(--shadow-lg); }
-  .modal img,.modal video { max-width:90vw; max-height:85vh; display:block; border-radius: 8px; }
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(20,14,24,.62); z-index: 100; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
+  .modal-overlay.active { display: flex; }
+  .modal { background: var(--surface); border-radius: 12px; max-width: 90vw; max-height: 90vh; overflow: auto; box-shadow: var(--shadow-lg); }
+  .modal img, .modal video { max-width: 90vw; max-height: 85vh; display: block; border-radius: 8px; }
 
-  /* Dialog (prompt/confirm replacement) */
-  .dialog-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:200; align-items:center; justify-content:center; backdrop-filter: blur(3px); }
-  .dialog-overlay.active { display:flex; }
-  .dialog { background: var(--bg-card); border-radius: 12px; padding: 24px; min-width: 360px; max-width: 440px; box-shadow: var(--shadow-lg); }
-  .dialog h3 { font-size: 16px; font-weight: 600; margin-bottom: 16px; color: var(--text); }
-  .dialog p { font-size: 14px; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.5; }
-  .dialog input[type="text"] { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 14px; font-family: inherit; margin-bottom: 16px; transition: border-color .15s; color: var(--text); background: var(--bg); }
-  .dialog input[type="text"]:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 0 3px rgba(99,102,241,.1); }
+  /* Dialog */
+  .dialog-overlay { display: none; position: fixed; inset: 0; background: rgba(20,14,24,.45); z-index: 200; align-items: center; justify-content: center; backdrop-filter: blur(3px); padding: 16px; }
+  .dialog-overlay.active { display: flex; }
+  .dialog { background: var(--surface); border-radius: 12px; padding: 24px; width: min(440px, 100%); box-shadow: var(--shadow-lg); }
+  .dialog h3 { font-family: var(--font-display); font-size: 19px; font-weight: 700; margin-bottom: 12px; }
+  .dialog p { font-size: 14px; color: var(--ink-2); margin-bottom: 18px; line-height: 1.55; white-space: pre-line; }
+  .dialog input[type="text"] { width: 100%; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius); font-size: 14px; font-family: inherit; margin: 8px 0 18px; color: var(--ink); background: var(--surface); }
+  .dialog input[type="text"]:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px rgba(140,47,91,.14); }
   .dialog-actions { display: flex; gap: 8px; justify-content: flex-end; }
-  .dialog-actions button { min-width: 80px; }
+  .dialog-actions button { min-width: 84px; }
 
   #fileInput { display: none; }
 
-  /* Home view */
-  .home-content { flex: 1; overflow-y: auto; padding: 24px; }
-  .flow-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
-  .flow-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; cursor: pointer; transition: all .15s; position: relative; }
-  .flow-card:hover { border-color: var(--primary); box-shadow: var(--shadow-lg); transform: translateY(-2px); }
-  .flow-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-  .flow-card-name { font-size: 16px; font-weight: 600; color: var(--text); }
-  .flow-card-meta { font-size: 13px; color: var(--text-muted); display: flex; gap: 12px; margin-top: 8px; }
-  .flow-card-actions { position: absolute; top: 10px; right: 10px; display: flex; gap: 4px; opacity: 0; transition: opacity .15s; }
-  .flow-card:hover .flow-card-actions { opacity: 1; }
-  .flow-card-actions button { background: none; border: none; padding: 4px; font-size: 16px; cursor: pointer; color: var(--text-muted); border-radius: 4px; transition: all .15s; }
-  .flow-card-actions button:hover { background: var(--bg); }
-  .flow-card-actions .fc-clone:hover { color: var(--primary); }
-  .flow-card-actions .fc-delete:hover { color: var(--danger); }
-
   /* Scrollbar */
-  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
-  ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-  .log-content::-webkit-scrollbar-thumb { background: #475569; }
+  ::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--ink-3); }
 
   /* Toast */
-  .toast-container { position: fixed; top: 16px; right: 16px; z-index: 300; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
-  .toast { pointer-events: auto; display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 8px; background: var(--bg-card); box-shadow: var(--shadow-lg); border-left: 4px solid var(--border); font-size: 13px; color: var(--text); min-width: 260px; max-width: 400px; animation: toast-in .3s ease; }
-  .toast.removing { animation: toast-out .25s ease forwards; }
-  .toast-success { border-left-color: var(--success); }
-  .toast-error { border-left-color: var(--danger); }
-  .toast-info { border-left-color: var(--info); }
-  .toast-icon { font-size: 16px; flex-shrink: 0; }
-  .toast-msg { flex: 1; line-height: 1.4; }
-  @keyframes toast-in { from { opacity: 0; transform: translateX(80px); } to { opacity: 1; transform: translateX(0); } }
-  @keyframes toast-out { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(80px); } }
+  .toast-container { position: fixed; top: 16px; right: 16px; z-index: 300; display: flex; flex-direction: column; gap: 8px; pointer-events: none; max-width: calc(100vw - 32px); }
+  .toast { pointer-events: auto; display: flex; align-items: flex-start; gap: 10px; padding: 11px 14px; border-radius: 9px; background: var(--ink); color: #fff; box-shadow: var(--shadow-lg); font-size: 13px; min-width: 260px; max-width: 400px; animation: toast-in .25s ease; }
+  .toast.removing { animation: toast-out .2s ease forwards; }
+  .toast-icon { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 700; flex-shrink: 0; margin-top: 1px; color: var(--ink); }
+  .toast-success .toast-icon { background: #5fd49a; }
+  .toast-error .toast-icon { background: #ff8f86; }
+  .toast-info .toast-icon { background: #a9c7f5; }
+  .toast-msg { flex: 1; line-height: 1.45; }
+  @keyframes toast-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+  @keyframes toast-out { to { opacity: 0; transform: translateY(-8px); } }
 
   /* Button loading */
   .btn-loading { position: relative; color: transparent !important; pointer-events: none; }
-  .btn-loading::after { content: ''; position: absolute; inset: 0; margin: auto; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.3); border-top-color: white; border-radius: 50%; animation: spin .6s linear infinite; }
-  .btn-outline.btn-loading::after { border-color: rgba(0,0,0,.15); border-top-color: var(--primary); }
+  .btn-loading::after { content: ''; position: absolute; inset: 0; margin: auto; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.35); border-top-color: #fff; border-radius: 50%; animation: spin .6s linear infinite; }
+  .btn-outline.btn-loading::after, .btn-import.btn-loading::after { border-color: rgba(0,0,0,.15); border-top-color: var(--accent); }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Narrow screens: one column, page scrolls */
+  @media (max-width: 900px) {
+    body { overflow: auto; display: block; height: auto; min-height: 100%; }
+    #app { display: block; }
+    .app-header { padding: 8px 14px; }
+    .runbar { padding: 10px 14px; }
+    .settings { margin-left: 0; }
+    .main { display: block; }
+    .tab-content { overflow: visible; }
+    .right-tab-content { overflow: visible; }
+    .right-panel { border-left: 0; border-top: 1px solid var(--line); scroll-margin-top: 8px; }
+    .shot-group, .list-toolbar { position: static; }
+    .people { grid-template-columns: 1fr; padding: 12px; }
+    .home-content { overflow: visible; }
+    .statusbar { position: sticky; bottom: 0; }
+  }
+  @media (max-width: 600px) {
+    .brand .word { display: none; }
+    .header-actions { width: 100%; }
+    .header-actions button { flex: 1; }
+    .shot { grid-template-columns: 16px 34px minmax(0, 1fr); }
+    .shot-side { grid-column: 3; flex-direction: row; align-items: center; }
+    .person { flex-direction: column; }
+    .photo-drop { width: 100%; height: 160px; }
+    .stat b { font-size: 18px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+  }
 </style>
 </head>
 <body>
@@ -256,7 +336,7 @@
 
 <script>
 // ─── Toast & Loading ─────────────────────────────────────
-const TOAST_ICONS = { success: '✅', error: '❌', info: 'ℹ️' };
+const TOAST_ICONS = { success: '✓', error: '!', info: 'i' };
 function showToast(message, type = 'info', duration = 3500) {
   const c = document.getElementById('toastContainer');
   const t = document.createElement('div');
@@ -309,19 +389,23 @@ async function loadFlows() {
   allFlows = await res.json();
 }
 
+const BRAND_SVG = '<svg class="brand-mark" viewBox="0 0 28 28" aria-hidden="true"><rect x="3" y="10" width="22" height="15" rx="3" fill="currentColor"/><path d="M3.8 6.9 22.6 3l1.1 4.6L4.9 11.5z" fill="currentColor" opacity=".55"/><path d="m11 14.5 6 3.5-6 3.5z" fill="#fff"/></svg>';
+const ICON_COPY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>';
+const ICON_TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>';
+const ICON_FILM = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M17 9h4M3 15h4M17 15h4"/></svg>';
+const STATUS_LABEL = { idle: 'Idle', created: 'Draft', running: 'Running', stopping: 'Stopping', stopped: 'Stopped', completed: 'Completed', error: 'Error' };
+function statusLabel(st) { return STATUS_LABEL[st] || st; }
+
 function renderHomeView() {
   document.getElementById('app').innerHTML = `
-    <div class="header">
-      <div class="header-left"><h1 onclick="navigate('/')">GG Flow</h1></div>
+    <header class="app-header">
+      <button class="brand" onclick="navigate('/')" aria-label="GG Flow home">${BRAND_SVG}<span class="word">GG Flow</span></button>
       <div class="header-actions">
-        <button class="btn-outline btn-sm" onclick="doLogin()">Login</button>
-        <button class="btn-primary" onclick="createFlow()">+ Create Flow</button>
+        <button class="btn-outline" onclick="doLogin()" title="Opens a browser window to sign in to Google Flow">Sign in to Flow</button>
+        <button class="btn-primary" onclick="createFlow()">New flow</button>
       </div>
-    </div>
-    <div class="home-content" id="homeContent">
-      <div style="text-align:center;padding:40px;color:var(--text-muted)">Loading...</div>
-    </div>
-    <div class="bottom-bar"><span>${allFlows.length} flow(s)</span><span></span></div>
+    </header>
+    <main class="home-content" id="homeContent"><div class="page"><p style="color:var(--ink-3)">Loading…</p></div></main>
   `;
   loadFlows().then(renderFlowList);
 }
@@ -329,38 +413,41 @@ function renderHomeView() {
 function renderFlowList() {
   const el = document.getElementById('homeContent');
   if (!el) return;
-  document.querySelector('.bottom-bar span').textContent = allFlows.length + ' flow(s)';
 
   if (!allFlows.length) {
     el.innerHTML = `
       <div class="empty-state">
-        <div class="empty-icon">🎬</div>
+        <div class="empty-mark">${ICON_FILM}</div>
         <h2>No flows yet</h2>
-        <p>Create a new flow to start generating AI images and videos</p>
-        <button class="btn-primary" onclick="createFlow()" style="margin-top:12px">+ Create Flow</button>
+        <p>A flow turns one Excel of scenes into images and videos on Google Flow.</p>
+        <button class="btn-primary" onclick="createFlow()">New flow</button>
       </div>`;
     return;
   }
 
-  el.innerHTML = '<div class="flow-grid">' + allFlows.map(f => {
-    const date = new Date(f.createdAt).toLocaleString('vi-VN');
+  const cards = allFlows.map(f => {
+    const when = new Date(f.updatedAt || f.createdAt).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const stats = f.hasExcel ? `<b>${f.sceneCount}</b> scenes` : `<span class="none">No Excel imported yet</span>`;
     return `
-      <div class="flow-card" onclick="navigate('/flow/${f.id}')">
-        <div class="flow-card-actions">
-          <button class="fc-clone" onclick="event.stopPropagation();cloneFlow('${f.id}')" title="Clone">📋</button>
-          <button class="fc-delete" onclick="event.stopPropagation();deleteFlow('${f.id}')" title="Delete">✕</button>
-        </div>
-        <div class="flow-card-header">
+      <article class="flow-card s-${esc(f.status)}" tabindex="0" onclick="navigate('/flow/${f.id}')" onkeydown="if(event.target===this&&event.key==='Enter')navigate('/flow/${f.id}')">
+        <div class="flow-card-top">
           <span class="flow-card-name">${esc(f.name)}</span>
-          <span class="status-badge status-${f.status}">${f.status}</span>
+          <span class="status-badge status-${esc(f.status)}">${esc(statusLabel(f.status))}</span>
         </div>
-        <div class="flow-card-meta">
-          <span>${f.sceneCount} scenes</span>
-          <span>${f.hasExcel ? '📊 Excel loaded' : '⏳ No data'}</span>
-          <span>${date}</span>
+        <div class="flow-card-stats">${stats}</div>
+        <div class="flow-card-foot">
+          <span>Updated ${esc(when)}</span>
+          <span class="flow-card-actions">
+            <button class="fc-clone" onclick="event.stopPropagation();cloneFlow('${f.id}')" title="Duplicate" aria-label="Duplicate flow">${ICON_COPY}</button>
+            <button class="fc-delete" onclick="event.stopPropagation();deleteFlow('${f.id}')" title="Delete" aria-label="Delete flow">${ICON_TRASH}</button>
+          </span>
         </div>
-      </div>`;
-  }).join('') + '</div>';
+      </article>`;
+  }).join('');
+
+  el.innerHTML = `<div class="page">
+    <div class="page-head"><div><h2>Flows</h2><p>${allFlows.length} ${allFlows.length === 1 ? 'flow' : 'flows'}. Each one holds an Excel of scenes, reference photos and the generated output.</p></div></div>
+    <div class="flow-grid">${cards}</div></div>`;
 }
 
 function createFlow() {
@@ -412,13 +499,14 @@ let scenes = [], characters = [], selectedScene = null, engineState = 'idle', sc
 let currentTab = 'scenes', currentRightTab = 'detail', logEntries = [];
 let eventSource = null;
 let flowMeta = null;
+let pickedScenes = new Set(), pickedInit = false; // cảnh được chọn để chạy (giữ qua các lần vẽ lại)
 
 function apiUrl(path) { return API + '/' + currentFlowId + '/' + path; }
 
 async function renderFlowView() {
   // Reset state
   scenes = []; characters = []; selectedScene = null; sceneStatuses = {};
-  logEntries = []; engineState = 'idle';
+  logEntries = []; engineState = 'idle'; pickedScenes = new Set(); pickedInit = false;
 
   // Close previous SSE
   if (eventSource) { eventSource.close(); eventSource = null; }
@@ -429,12 +517,12 @@ async function renderFlowView() {
   flowMeta = await metaRes.json();
 
   document.getElementById('app').innerHTML = `
-    <div class="header">
-      <div class="header-left">
-        <h1 onclick="navigate('/')">GG Flow</h1>
-        <span style="color:var(--text-muted);font-size:14px">›</span>
-        <span style="font-weight:600;font-size:16px">${esc(flowMeta.name)}</span>
-        <span id="statusBadge" class="status-badge status-${flowMeta.status}">${flowMeta.status}</span>
+    <header class="app-header">
+      <button class="brand" onclick="navigate('/')" aria-label="All flows">${BRAND_SVG}<span class="word">GG Flow</span></button>
+      <span class="crumb-sep" aria-hidden="true">/</span>
+      <div class="crumb-meta">
+        <h1 class="crumb-name">${esc(flowMeta.name)}</h1>
+        <span id="statusBadge" class="status-badge status-${esc(flowMeta.status)}">${esc(statusLabel(flowMeta.status))}</span>
       </div>
       <div class="header-actions">
         <button class="btn-import" onclick="document.getElementById('fileInput').click()">Import Excel</button>
@@ -442,42 +530,42 @@ async function renderFlowView() {
         <button class="btn-primary" id="btnStart" onclick="doStart()" disabled>Start</button>
         <button class="btn-danger" id="btnStop" onclick="doStop()" disabled>Stop</button>
       </div>
-    </div>
-    <div class="summary" id="summaryBar" style="display:none">
-      <span class="summary-item" id="sumScenes"></span>
-      <span class="summary-item" id="sumChars"></span>
-      <span class="summary-item" id="sumPhotos"></span>
-      <span class="summary-item" id="sumTypes"></span>
-      <div class="summary-settings">
-        <label>Ratio <select id="ratio"><option value="16:9" selected>16:9</option><option value="9:16">9:16</option><option value="1:1">1:1</option></select></label>
-        <label>Count <select id="genCount"><option value="1" selected>x1</option><option value="2">x2</option></select></label>
-        <label><input type="checkbox" id="imageOnly"> Img only</label>
-        <label><input type="checkbox" id="videoOnly"> Vid only</label>
-        <label><input type="checkbox" id="resume"> Resume</label>
+    </header>
+    <div class="runbar" id="summaryBar" style="display:none">
+      <div class="stats">
+        <span class="stat" id="sumScenes"></span>
+        <span class="stat" id="sumChars"></span>
+        <button class="stat stat-photos" id="sumPhotos" onclick="goToCharacters()"></button>
+        <span class="stat" id="sumTypes"></span>
+      </div>
+      <div class="settings">
+        <label class="field">Ratio <select id="ratio"><option value="16:9" selected>16:9</option><option value="9:16">9:16</option><option value="1:1">1:1</option></select></label>
+        <label class="field">Outputs <select id="genCount"><option value="1" selected>1 per scene</option><option value="2">2 per scene</option></select></label>
+        <label class="toggle"><input type="checkbox" id="imageOnly"><span>Images only</span></label>
+        <label class="toggle"><input type="checkbox" id="videoOnly"><span>Videos only</span></label>
+        <label class="toggle"><input type="checkbox" id="resume"><span>Resume</span></label>
       </div>
     </div>
     <div class="main">
-      <div class="left-panel">
-        <div class="tabs">
-          <div class="tab active" onclick="switchTab('scenes',this)">🎬 Scenes</div>
-          <div class="tab" onclick="switchTab('chars',this)">👤 Characters</div>
+      <section class="left-panel">
+        <div class="tabs" role="tablist">
+          <button class="tab active" role="tab" onclick="switchTab('scenes',this)">Scenes <span class="count" id="cntScenes">0</span></button>
+          <button class="tab" role="tab" id="tabChars" onclick="switchTab('chars',this)">Characters <span class="count" id="cntChars">0</span></button>
         </div>
-        <div class="tab-content" id="tabContent">
-          <div class="empty-state"><div class="empty-icon">📋</div><h2>No data loaded</h2><p>Import an Excel file</p><button class="btn-import" onclick="document.getElementById('fileInput').click()" style="margin-top:12px">Import Excel</button></div>
-        </div>
-      </div>
-      <div class="right-panel">
-        <div class="right-tabs tabs">
-          <div class="tab active" onclick="switchRightTab('detail',this)">📄 Detail</div>
-          <div class="tab" onclick="switchRightTab('log',this)">📋 Log</div>
+        <div class="tab-content" id="tabContent">${emptyScenesHtml()}</div>
+      </section>
+      <aside class="right-panel" id="rightPanel">
+        <div class="right-tabs tabs" role="tablist">
+          <button class="tab active" role="tab" onclick="switchRightTab('detail',this)">Detail</button>
+          <button class="tab" role="tab" onclick="switchRightTab('log',this)">Log</button>
         </div>
         <div class="right-tab-content" id="rightContent">
-          <div class="detail-content"><div class="detail-empty">Select a scene to view details</div></div>
+          <div class="detail-content"><div class="detail-empty">Select a scene to see its prompts and progress.</div></div>
         </div>
-      </div>
+      </aside>
     </div>
     <div class="results-bar" id="resultsBar"></div>
-    <div class="bottom-bar"><span id="bottomStats">Import an Excel file to start</span><span id="progressStats"></span></div>
+    <footer class="statusbar"><span id="bottomStats">Import an Excel file to start</span><span class="meter" id="progressStats"></span></footer>
   `;
 
   await loadFlowData();
@@ -499,6 +587,7 @@ async function uploadExcel(input) {
       return;
     }
     showToast('Excel imported successfully', 'success');
+    pickedInit = false;
     await loadFlowData();
   });
 }
@@ -508,6 +597,7 @@ async function loadFlowData() {
     const [sR, cR] = await Promise.all([fetch(apiUrl('scenes')), fetch(apiUrl('characters'))]);
     if (!sR.ok || !cR.ok) throw new Error('Failed to load data');
     scenes = await sR.json(); characters = await cR.json();
+    if (!pickedInit) { pickedScenes = new Set(scenes.map(x => x.sceneNumber)); pickedInit = true; }
     renderSummary(); renderLeft();
     const btnStart = document.getElementById('btnStart');
     if (btnStart) btnStart.disabled = !scenes.length;
@@ -515,74 +605,149 @@ async function loadFlowData() {
   } catch (e) { showToast('Failed to load flow data', 'error'); }
 }
 
-function renderSummary() {
-  if (!scenes.length) { const el = document.getElementById('summaryBar'); if (el) el.style.display = 'none'; return; }
-  const el = document.getElementById('summaryBar'); if (el) el.style.display = '';
-  const v = scenes.filter(s => s.type === 'AI-VID').length, i = scenes.filter(s => s.type === 'AI-IMG').length, k = scenes.filter(s => s.type === 'STOCK').length;
-  const ss = document.getElementById('sumScenes'); if (ss) ss.innerHTML = '<strong>' + scenes.length + '</strong>&nbsp;scenes';
-  const sc = document.getElementById('sumChars'); if (sc) sc.innerHTML = '<strong>' + characters.length + '</strong>&nbsp;characters';
-  const sp = document.getElementById('sumPhotos');
-  if (sp) {
-    const withP = characters.filter(c => c.photoSource === 'upload' || c.photoSource === 'excel').length;
-    sp.innerHTML = '📷&nbsp;<strong style="color:' + (withP === characters.length && withP ? '#166534' : '#b45309') + '">' + withP + '/' + characters.length + '</strong>&nbsp;photos';
-  }
-  let t = []; if (v) t.push('<span class="tag tag-vid">' + v + ' VID</span>'); if (i) t.push('<span class="tag tag-img">' + i + ' IMG</span>'); if (k) t.push('<span class="tag tag-stock">' + k + ' STOCK</span>');
-  const st = document.getElementById('sumTypes'); if (st) st.innerHTML = t.join(' ');
+function emptyScenesHtml() {
+  return '<div class="empty-state"><div class="empty-mark">' + ICON_FILM + '</div><h2>No scenes yet</h2><p>Import the Excel file to load its scenes and characters.</p><button class="btn-import" onclick="document.getElementById(\'fileInput\').click()">Import Excel</button></div>';
 }
 
+function renderSummary() {
+  const bar = document.getElementById('summaryBar');
+  const cs = document.getElementById('cntScenes'), cc = document.getElementById('cntChars');
+  if (cs) cs.textContent = scenes.length;
+  if (cc) cc.textContent = characters.length;
+  if (!bar) return;
+  if (!scenes.length) { bar.style.display = 'none'; return; }
+  bar.style.display = '';
+  const n = t => scenes.filter(s => s.type === t).length;
+  const v = n('AI-VID'), i = n('AI-IMG'), k = n('STOCK');
+  document.getElementById('sumScenes').innerHTML = '<b>' + scenes.length + '</b> scenes';
+  document.getElementById('sumChars').innerHTML = '<b>' + characters.length + '</b> characters';
+  const ready = characters.filter(c => c.photoSource === 'upload' || c.photoSource === 'excel').length;
+  const sp = document.getElementById('sumPhotos');
+  sp.style.display = characters.length ? '' : 'none';
+  sp.className = 'stat stat-photos ' + (ready === characters.length ? 'ok' : 'warn');
+  sp.title = ready === characters.length ? 'Every character has a reference photo' : 'Some characters have no reference photo. Click to fix.';
+  sp.innerHTML = '<b>' + ready + '/' + characters.length + '</b>&nbsp;reference photos';
+  const t = []; if (v) t.push('<span class="tag tag-vid">' + v + ' video</span>'); if (i) t.push('<span class="tag tag-img">' + i + ' image</span>'); if (k) t.push('<span class="tag tag-stock">' + k + ' stock</span>');
+  document.getElementById('sumTypes').innerHTML = t.join(' ');
+}
+
+function goToCharacters() { const b = document.getElementById('tabChars'); if (b) b.click(); }
 function switchTab(t, el) { currentTab = t; document.querySelectorAll('.left-panel .tab').forEach(x => x.classList.remove('active')); el.classList.add('active'); renderLeft(); }
 function switchRightTab(t, el) { currentRightTab = t; document.querySelectorAll('.right-panel .tabs .tab').forEach(x => x.classList.remove('active')); el.classList.add('active'); renderRight(); }
 
 function renderLeft() {
   const el = document.getElementById('tabContent');
   if (!el) return;
-  if (!scenes.length) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">📋</div><h2>No data loaded</h2><p>Import an Excel file</p><button class="btn-import" onclick="document.getElementById(\'fileInput\').click()" style="margin-top:12px">Import Excel</button></div>'; return; }
+  if (!scenes.length) { el.onclick = el.onchange = null; el.innerHTML = emptyScenesHtml(); return; }
   currentTab === 'scenes' ? renderScenes(el) : renderChars(el);
 }
 
+// Tên cảnh do bộ prompt tạo ra: "A1.04 · Chương 1 · Chiến Quốc · vừa-rộng · dùng 3,5 s · mặt: có".
+// Tách được thì hiện thành chip và gom theo chương; không tách được thì hiện nguyên tên.
+function parseShot(name) {
+  const p = String(name || '').split(' · ').map(x => x.trim());
+  const n = p.length;
+  if (n >= 5 && /^dùng\s/i.test(p[n - 2]) && /^mặt\s*:/i.test(p[n - 1])) {
+    return { code: p[0], chapter: p.slice(1, n - 3).join(' · '), size: p[n - 3], dur: p[n - 2].replace(/^dùng\s*/i, ''), face: /có/i.test(p[n - 1]) };
+  }
+  return null;
+}
+
+let groupIndex = {};
 function renderScenes(el) {
-  const rows = scenes.map(s => {
-    const tc = s.type === 'AI-VID' ? 'tag-vid' : s.type === 'AI-IMG' ? 'tag-img' : 'tag-stock';
-    const st = sceneStatuses[s.sceneNumber] || '';
-    const stH = st && st !== 'waiting' ? '<span class="tag-step step-' + st + '">' + st + '</span>' : '';
-    const sel = selectedScene === s.sceneNumber ? ' selected' : '';
-    const pr = (s.imagePrompt || '').substring(0, 60);
-    const ch = s.characterNames?.length ? '<div class="char-list">' + s.characterNames.join(', ') + '</div>' : '';
-    return '<tr class="' + sel + '" onclick="selectScene(\'' + s.sceneNumber + '\')">' +
-      '<td><input type="checkbox" class="scene-check" value="' + s.sceneNumber + '" checked onclick="event.stopPropagation()"></td>' +
-      '<td style="color:var(--primary);font-weight:700">' + s.sceneNumber + '</td>' +
-      '<td><div class="scene-name-cell">' + s.sceneName + ' ' + stH + '</div><div class="prompt-preview">' + pr + '</div>' + ch + '</td>' +
-      '<td><span class="tag ' + tc + '">' + s.type.replace('AI-', '') + '</span></td></tr>';
-  }).join('');
-  el.innerHTML = '<table class="scene-table"><thead><tr><th style="width:32px"><input type="checkbox" checked onchange="selectAll(this.checked)"></th><th style="width:36px">#</th><th>Scene</th><th style="width:55px">Type</th></tr></thead><tbody>' + rows + '</tbody></table>';
+  const info = scenes.map(s => ({ s, p: parseShot(s.sceneName) }));
+  const grouped = info.some(x => x.p);
+  const keyOf = x => grouped ? (x.p ? x.p.chapter : 'Other') : '';
+  const mixed = new Set(scenes.map(s => s.type)).size > 1;
+
+  groupIndex = {};
+  info.forEach(x => {
+    const g = groupIndex[keyOf(x)] || (groupIndex[keyOf(x)] = { n: 0, sec: 0, nums: [] });
+    g.n++; g.nums.push(x.s.sceneNumber);
+    g.sec += x.p ? (parseFloat(x.p.dur.replace(',', '.')) || 0) : (Number(x.s.duration) || 0);
+  });
+
+  const picked = scenes.filter(s => pickedScenes.has(s.sceneNumber)).length;
+  let html = '<div class="list-toolbar"><input type="checkbox" id="selAll" aria-label="Select all scenes">' +
+    '<span id="selCount">' + picked + ' of ' + scenes.length + ' selected</span><span class="spacer"></span>' +
+    '<button class="link-btn" data-act="first6" title="Select only the first 6 scenes for a quick trial run">First 6 only</button></div>';
+
+  let last = null;
+  info.forEach(({ s, p }) => {
+    const k = keyOf({ s, p });
+    if (grouped && k !== last) {
+      const g = groupIndex[k];
+      html += '<div class="shot-group"><input type="checkbox" class="grp-check" data-key="' + esc(k) + '" aria-label="Select ' + esc(k) + '">' +
+        '<span class="g-name">' + esc(k) + '</span><span class="g-meta">' + g.n + (g.n === 1 ? ' shot · ' : ' shots · ') + (Math.round(g.sec * 10) / 10) + ' s</span></div>';
+      last = k;
+    }
+    const num = s.sceneNumber;
+    const st = sceneStatuses[num] || '';
+    const status = st && st !== 'waiting' ? '<span class="tag-step step-' + st + '">' + esc(st) + '</span>' : '';
+    const typeTag = mixed ? '<span class="tag ' + (s.type === 'AI-VID' ? 'tag-vid' : s.type === 'AI-IMG' ? 'tag-img' : 'tag-stock') + '">' + esc(s.type.replace('AI-', '')) + '</span>' : '';
+    const who = (s.characterNames || []).map(c => '<span class="chip">' + esc(c) + '</span>').join('');
+    let chips;
+    if (p) chips = '<span class="chip">' + esc(p.dur) + '</span>' + (p.face ? '<span class="chip chip-face-yes">Face</span>' : '<span class="chip">No face</span>') + who;
+    else chips = (s.duration ? '<span class="chip">' + esc(String(s.duration)) + ' s</span>' : '') + who;
+    const title = p ? '<span class="code">' + esc(p.code) + '</span>' + esc(p.size) : esc(s.sceneName);
+    html += '<div class="shot' + (selectedScene === num ? ' selected' : '') + '" data-num="' + esc(num) + '">' +
+      '<input type="checkbox" class="scene-check" value="' + esc(num) + '"' + (pickedScenes.has(num) ? ' checked' : '') + ' aria-label="Select scene ' + esc(num) + '">' +
+      '<span class="shot-num">' + esc(num) + '</span>' +
+      '<div><div class="shot-title">' + title + '</div><div class="shot-chips">' + chips + '</div><div class="shot-prompt">' + esc((s.imagePrompt || '').slice(0, 160)) + '</div></div>' +
+      '<div class="shot-side">' + typeTag + status + '</div></div>';
+  });
+  el.innerHTML = html;
+
+  const all = document.getElementById('selAll');
+  all.checked = picked === scenes.length && picked > 0;
+  all.indeterminate = picked > 0 && picked < scenes.length;
+  el.querySelectorAll('.grp-check').forEach(cb => {
+    const nums = (groupIndex[cb.dataset.key] || { nums: [] }).nums;
+    const c = nums.filter(n => pickedScenes.has(n)).length;
+    cb.checked = c === nums.length && c > 0;
+    cb.indeterminate = c > 0 && c < nums.length;
+  });
+
+  el.onchange = e => {
+    const t = e.target;
+    if (t.id === 'selAll') selectAll(t.checked);
+    else if (t.classList.contains('grp-check')) { (groupIndex[t.dataset.key] || { nums: [] }).nums.forEach(n => t.checked ? pickedScenes.add(n) : pickedScenes.delete(n)); renderLeft(); }
+    else if (t.classList.contains('scene-check')) { t.checked ? pickedScenes.add(t.value) : pickedScenes.delete(t.value); renderLeft(); }
+  };
+  el.onclick = e => {
+    if (e.target.dataset && e.target.dataset.act === 'first6') { pickedScenes = new Set(scenes.slice(0, 6).map(x => x.sceneNumber)); renderLeft(); return; }
+    if (e.target.matches('input, button')) return;
+    const row = e.target.closest('.shot');
+    if (row) selectScene(row.dataset.num, true);
+  };
 }
 
 function renderChars(el) {
+  el.onclick = el.onchange = null;
   const locked = engineState === 'running' || engineState === 'stopping';
-  const rows = characters.map(c => {
+  const cards = characters.map(c => {
     const idq = encodeURIComponent(c.id).replace(/'/g, '%27');
-    const thumb = c.photoUrl ? '<img src="' + c.photoUrl + '" alt="">' : (c.photoSource === 'excel' ? '🖼<br>from<br>Excel' : '＋<br>Drop photo<br>or click');
+    const thumb = c.photoUrl ? '<img src="' + c.photoUrl + '" alt="Photo of ' + esc(c.name) + '">' : (c.photoSource === 'excel' ? 'Photo from<br>Excel path' : 'Drop a photo<br>or click');
     const badge = c.photoSource === 'upload' ? '<span class="photo-badge photo-ok">✓ Uploaded</span>'
       : c.photoSource === 'excel' ? '<span class="photo-badge photo-excel">From Excel path</span>'
       : c.photoSource === 'missing' ? '<span class="photo-badge photo-none">Excel path not found</span>'
       : '<span class="photo-badge photo-none">No photo</span>';
-    const extra = (c.photoSource === 'excel' || c.photoSource === 'missing') ? '<div class="photo-path">' + esc(c.excelPhotoPath) + (c.photoSource === 'missing' ? ' — file does not exist. Upload a photo here.' : '') + '</div>'
-      : (!c.photoSource && c.promptHeadshot ? '<div class="photo-path">Flow will generate a headshot from prompt</div>' : '')
-      + (!c.photoSource && !c.promptHeadshot ? '<div class="photo-path">Face will NOT be locked</div>' : '');
+    const extra = (c.photoSource === 'excel' || c.photoSource === 'missing') ? '<div class="photo-path">' + esc(c.excelPhotoPath) + (c.photoSource === 'missing' ? '<br>That file does not exist. Upload a photo here instead.' : '') + '</div>'
+      : (!c.photoSource && c.promptHeadshot ? '<div class="photo-path">Flow will generate a headshot from the prompt.</div>' : '')
+      + (!c.photoSource && !c.promptHeadshot ? '<div class="photo-path">The face will not be locked and may differ between scenes.</div>' : '');
     const dis = locked ? ' disabled' : '';
-    return '<tr><td style="color:var(--primary);font-weight:700">' + esc(c.id) + '</td>' +
-      '<td><span class="char-name">' + esc(c.name) + '</span><div class="char-role">' + esc(c.role) + '</div></td>' +
-      '<td><div class="photo-cell">' +
-        '<div class="photo-drop" id="drop-' + esc(c.id) + '" title="JPG / PNG / WebP, up to 15 MB" ' + (locked ? '' : 'onclick="pickPhoto(\'' + idq + '\')"') + '>' + thumb + '</div>' +
-        '<div class="photo-info">' + badge + extra +
-          '<div class="photo-actions">' +
-            '<button' + dis + ' onclick="pickPhoto(\'' + idq + '\')">' + (c.photoSource === 'upload' ? 'Replace' : 'Upload photo') + '</button>' +
-            (c.photoSource === 'upload' ? '<button' + dis + ' onclick="removePhoto(\'' + idq + '\')">Remove</button>' : '') +
-          '</div></div></div></td></tr>';
+    const role = c.role && c.role !== c.name ? ' · ' + esc(c.role) : '';
+    return '<div class="person">' +
+      '<div class="photo-drop" id="drop-' + esc(c.id) + '" title="JPG, PNG or WebP, up to 15 MB"' + (locked ? '' : ' role="button" tabindex="0" aria-label="Upload photo for ' + esc(c.name) + '" onclick="pickPhoto(\'' + idq + '\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();pickPhoto(\'' + idq + '\')}"') + '>' + thumb + '</div>' +
+      '<div class="person-info"><div><span class="person-name">' + esc(c.name) + '</span><span class="person-id">#' + esc(c.id) + role + '</span></div>' + badge + extra +
+        '<div class="photo-actions">' +
+          '<button' + dis + ' onclick="pickPhoto(\'' + idq + '\')">' + (c.photoSource === 'upload' ? 'Replace photo' : 'Upload photo') + '</button>' +
+          (c.photoSource === 'upload' ? '<button' + dis + ' onclick="removePhoto(\'' + idq + '\')">Remove</button>' : '') +
+        '</div></div></div>';
   }).join('');
-  el.innerHTML = '<div class="photo-hint">📷 Upload a clear, front-facing portrait of each person (bride / groom). Uploaded photos override the path in the Excel <em>Characters</em> sheet and are matched to scenes by character name.</div>' +
+  el.innerHTML = '<div class="photo-hint">Add a clear, front-facing portrait of each person. Uploaded photos take priority over the path in the Excel <em>Characters</em> sheet.</div>' +
     '<input type="file" id="photoInput" accept="image/jpeg,image/png,image/webp" style="display:none" onchange="onPhotoPicked(this)">' +
-    '<table class="char-table"><thead><tr><th style="width:36px">ID</th><th style="width:150px">Character</th><th>Reference photo</th></tr></thead><tbody>' + rows + '</tbody></table>';
+    '<div class="people">' + cards + '</div>';
   characters.forEach(c => {
     const d = document.getElementById('drop-' + c.id); if (!d || locked) return;
     d.addEventListener('dragover', e => { e.preventDefault(); d.classList.add('drag'); });
@@ -619,42 +784,63 @@ async function removePhoto(idEnc) {
   await loadFlowData();
 }
 
-function selectScene(num) {
+function selectScene(num, fromUser) {
   selectedScene = num;
-  document.querySelectorAll('.scene-table tbody tr').forEach(r => { const cb = r.querySelector('.scene-check'); r.classList.toggle('selected', cb && cb.value === num); });
+  document.querySelectorAll('.shot').forEach(r => r.classList.toggle('selected', r.dataset.num === num));
   if (currentRightTab === 'detail') renderDetail();
+  if (fromUser && window.matchMedia('(max-width: 900px)').matches) {
+    const rp = document.getElementById('rightPanel'); if (rp) rp.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 }
 
 function renderRight() { currentRightTab === 'detail' ? renderDetail() : renderLog(); }
+
+function stepperHtml(s, status) {
+  const stages = s.type === 'AI-VID' ? ['Image', 'Video', 'Done'] : ['Image', 'Done'];
+  let cur = -1;
+  if (status.startsWith('image')) cur = 0; else if (status.startsWith('video')) cur = 1; else if (status === 'complete') cur = stages.length;
+  const parts = stages.map((label, i) => {
+    const cls = i < cur ? 'done' : i === cur ? 'now' : '';
+    return '<span class="st ' + cls + '"><i>' + (cls === 'done' ? '✓' : '') + '</i>' + label + '</span>';
+  });
+  let html = '<div class="stepper">' + parts.join('<span class="bar"></span>') + '</div>';
+  if (status === 'failed') html += '<div class="photo-path" style="color:var(--bad);margin-top:10px">This scene failed. Open the Log tab for the reason.</div>';
+  return html;
+}
 
 function renderDetail() {
   const el = document.getElementById('rightContent');
   if (!el) return;
   const s = scenes.find(x => x.sceneNumber === selectedScene);
-  if (!s) { el.innerHTML = '<div class="detail-content"><div class="detail-empty">Select a scene to view details</div></div>'; return; }
+  if (!s) { el.innerHTML = '<div class="detail-content"><div class="detail-empty">Select a scene to see its prompts and progress.</div></div>'; return; }
   const tc = s.type === 'AI-VID' ? 'tag-vid' : s.type === 'AI-IMG' ? 'tag-img' : 'tag-stock';
   const status = sceneStatuses[s.sceneNumber] || 'waiting';
-  const pct = { waiting: 0, 'image-gen': 25, 'image-download': 40, 'video-gen': 60, 'video-download': 80, complete: 100, failed: 100 };
-  const fc = status.startsWith('image') ? 'fill-image' : status.startsWith('video') ? 'fill-video' : status === 'complete' ? 'fill-complete' : status === 'failed' ? 'fill-failed' : '';
+  const p = parseShot(s.sceneName);
+  const eyebrow = p ? [p.code, p.chapter] : ['Scene ' + s.sceneNumber];
+  const facts = [
+    ['Ends at', esc((s.endTime || '').replace('p', ':') || '–')],
+    ['Length', esc(p ? p.dur : (s.duration ? s.duration + ' s' : '–'))],
+  ];
+  if (p) facts.push(['Face', p.face ? 'Visible' : 'None']);
+  facts.push(['Characters', esc((s.characterNames || []).join(', ') || 'None')]);
+  const ta = (type, label, hint, value) => '<div class="detail-field"><label class="detail-label" for="ta-' + type + '">' + label + '<small>' + hint + '</small></label>' +
+    '<textarea class="prompt-edit" id="ta-' + type + '" data-scene="' + esc(s.sceneNumber) + '" data-type="' + type + '">' + esc(value || '') + '</textarea></div>';
 
   el.innerHTML = '<div class="detail-content">' +
-    '<div style="display:flex;gap:8px;align-items:center"><span class="tag ' + tc + '">' + s.type + '</span><span class="tag-step step-' + status + '">' + status + '</span></div>' +
-    '<div class="detail-title">' + s.sceneName + '</div>' +
-    '<div class="detail-meta">' +
-      '<div class="detail-meta-item"><strong>' + s.endTime.replace('p', ':') + '</strong> end</div>' +
-      '<div class="detail-meta-item"><strong>' + (s.duration || '?') + '</strong>s</div>' +
-      '<div class="detail-meta-item">' + (s.characterNames?.join(', ') || 'No characters') + '</div>' +
-    '</div>' +
-    '<div class="detail-field"><div class="detail-label">Prompt ' + (s.type === 'AI-VID' ? 'First Frame' : 'Image') + '</div>' +
-      '<textarea class="prompt-edit" data-scene="' + s.sceneNumber + '" data-type="image" rows="3">' + (s.imagePrompt || '') + '</textarea></div>' +
-    (s.type === 'AI-VID' ? '<div class="detail-field"><div class="detail-label">Prompt Video (Veo)</div><textarea class="prompt-edit" data-scene="' + s.sceneNumber + '" data-type="video" rows="3">' + (s.videoPrompt || '') + '</textarea></div>' : '') +
-    '<div class="detail-field"><div class="detail-label">Progress</div><div class="progress-bar"><div class="progress-fill ' + fc + '" style="width:' + (pct[status] || 0) + '%"></div></div></div>' +
+    '<div class="detail-eyebrow">' + eyebrow.map(esc).join(' · ') + ' <span class="tag ' + tc + '">' + esc(s.type) + '</span><span class="tag-step step-' + status + '">' + esc(status) + '</span></div>' +
+    '<h2 class="detail-title">' + esc(p ? p.size : s.sceneName) + '</h2>' +
+    '<div class="facts">' + facts.map(f => '<div class="fact"><div class="fact-label">' + f[0] + '</div><div class="fact-value">' + f[1] + '</div></div>').join('') + '</div>' +
+    ta('image', s.type === 'AI-VID' ? 'First-frame prompt' : 'Image prompt', 'Saved when you click away', s.imagePrompt) +
+    (s.type === 'AI-VID' ? ta('video', 'Video prompt (Veo)', 'Motion only', s.videoPrompt) : '') +
+    '<div class="detail-field"><div class="detail-label">Progress</div>' + stepperHtml(s, status) + '</div>' +
   '</div>';
-  el.querySelectorAll('.prompt-edit').forEach(ta => {
-    ta.addEventListener('blur', async () => {
+  el.querySelectorAll('.prompt-edit').forEach(t => {
+    const grow = () => { t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight + 2, 420) + 'px'; };
+    grow(); t.addEventListener('input', grow);
+    t.addEventListener('blur', async () => {
       try {
-        const b = {}; b[ta.dataset.type === 'image' ? 'imagePrompt' : 'videoPrompt'] = ta.value;
-        const res = await fetch(apiUrl('scenes/' + ta.dataset.scene), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+        const b = {}; b[t.dataset.type === 'image' ? 'imagePrompt' : 'videoPrompt'] = t.value;
+        const res = await fetch(apiUrl('scenes/' + encodeURIComponent(t.dataset.scene)), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
         if (!res.ok) throw new Error('Failed to save prompt');
         showToast('Prompt saved', 'success', 2000);
       } catch (e) { showToast(e.message, 'error'); }
@@ -665,7 +851,7 @@ function renderDetail() {
 function renderLog() {
   const el = document.getElementById('rightContent');
   if (!el) return;
-  el.innerHTML = '<div style="display:flex;justify-content:flex-end;padding:4px 8px;background:var(--bg);border-bottom:1px solid var(--border)"><button class="btn-outline btn-sm" onclick="clearLog()">Clear</button></div><div class="log-content" id="logContent"></div>';
+  el.innerHTML = '<div class="log-toolbar"><span>Live log</span><button class="btn-outline btn-sm" onclick="clearLog()">Clear</button></div><div class="log-content" id="logContent"></div>';
   const lc = document.getElementById('logContent');
   logEntries.forEach(e => appendLog(lc, e)); lc.scrollTop = lc.scrollHeight;
 }
@@ -674,8 +860,8 @@ function addLog(entry) { logEntries.push(entry); if (logEntries.length > 500) lo
 function appendLog(c, e) { const l = document.createElement('div'); l.className = 'log-entry log-' + e.level; const ts = e.timestamp || new Date().toLocaleTimeString('vi-VN'); l.textContent = '[' + ts + '] ' + (e.scene ? '[#' + e.scene + '] ' : '') + e.message; c.appendChild(l); }
 function clearLog() { logEntries = []; const lc = document.getElementById('logContent'); if (lc) lc.innerHTML = ''; }
 
-function selectAll(c) { document.querySelectorAll('.scene-check').forEach(cb => cb.checked = c); }
-function getSelectedScenes() { return Array.from(document.querySelectorAll('.scene-check:checked')).map(cb => cb.value); }
+function selectAll(c) { pickedScenes = c ? new Set(scenes.map(x => x.sceneNumber)) : new Set(); renderLeft(); }
+function getSelectedScenes() { return scenes.map(x => x.sceneNumber).filter(n => pickedScenes.has(n)); }
 
 async function doStart() {
   const sel = getSelectedScenes(); if (!sel.length) { showAlertDialog('No Selection', 'Select at least one scene'); return; }
@@ -701,21 +887,21 @@ async function doStop() {
 
 function updateState(state) {
   engineState = state; const b = document.getElementById('statusBadge');
-  if (b) { b.textContent = state.charAt(0).toUpperCase() + state.slice(1); b.className = 'status-badge status-' + state; }
+  if (b) { b.textContent = statusLabel(state); b.className = 'status-badge status-' + state; }
   if (currentTab === 'chars') renderLeft(); // khóa/mở nút ảnh theo trạng thái chạy
   const btnStart = document.getElementById('btnStart');
   const btnStop = document.getElementById('btnStop');
   if (btnStart) btnStart.disabled = state !== 'idle' || !scenes.length;
   if (btnStop) btnStop.disabled = state === 'idle';
   const bs = document.getElementById('bottomStats');
-  if (bs) bs.textContent = state === 'idle' ? 'Ready' : state === 'running' ? 'Running...' : 'Stopping...';
+  if (bs) bs.textContent = state === 'idle' ? 'Ready' : state === 'running' ? 'Running…' : 'Stopping…';
 }
 
 function updateProgress(statuses) {
   if (!statuses) return; let done = 0, fail = 0;
   statuses.forEach(s => { sceneStatuses[s.sceneNumber] = s.step; if (s.step === 'complete') done++; if (s.step === 'failed') fail++; });
   const ps = document.getElementById('progressStats');
-  if (ps) ps.textContent = statuses.length ? done + '/' + statuses.length + ' done' + (fail ? ', ' + fail + ' failed' : '') : '';
+  if (ps) ps.innerHTML = statuses.length ? done + ' / ' + statuses.length + ' done' + (fail ? ' · ' + fail + ' failed' : '') + '<i><b style="width:' + Math.round(done / statuses.length * 100) + '%"></b></i>' : '';
   renderLeft(); if (selectedScene && currentRightTab === 'detail') renderDetail();
 }
 
@@ -783,7 +969,7 @@ function showBrowserNotification(title, body) {
   if ('Notification' in window && Notification.permission === 'granted') {
     const n = new Notification(title, {
       body,
-      icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🚀</text></svg>',
+      icon: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28"%3E%3Crect x="3" y="10" width="22" height="15" rx="3" fill="%238c2f5b"/%3E%3Cpath d="m11 14.5 6 3.5-6 3.5z" fill="%23fff"/%3E%3C/svg%3E',
     });
     n.onclick = () => { window.focus(); n.close(); };
     setTimeout(() => n.close(), 8000);
