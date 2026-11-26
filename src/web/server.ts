@@ -15,6 +15,9 @@ import {
   handleFlowUpload,
   handleFlowScenes,
   handleFlowCharacters,
+  handleFlowPhotoUpload,
+  handleFlowPhotoDelete,
+  handleFlowPhotoGet,
   handleFlowUpdateScene,
   handleFlowStart,
   handleFlowStop,
@@ -99,6 +102,14 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         // GET /api/flows/:id/characters
         if (action === 'characters' && method === 'GET') {
           return await handleFlowCharacters(fm)(req, res, flowId);
+        }
+
+        // /api/flows/:id/photos/:charId — ảnh cô dâu / chú rể (POST raw body, DELETE, GET)
+        if (action === 'photos' && sub) {
+          const charId = decodeURIComponent(sub);
+          if (method === 'POST') return await handleFlowPhotoUpload(fm)(req, res, flowId, charId);
+          if (method === 'DELETE') return await handleFlowPhotoDelete(fm)(req, res, flowId, charId);
+          if (method === 'GET') return handleFlowPhotoGet(fm)(req, res, flowId, charId);
         }
 
         // POST /api/flows/:id/start

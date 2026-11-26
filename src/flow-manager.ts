@@ -1,12 +1,13 @@
 import { randomUUID } from 'crypto';
 import { mkdirSync, existsSync, readFileSync, writeFileSync, readdirSync, rmSync, copyFileSync } from 'fs';
-import { join } from 'path';
+import { join, resolve, dirname, isAbsolute } from 'path';
 import type { ServerResponse } from 'http';
 import type { Page } from 'playwright';
 import { CONFIG, getFlowPaths, type FlowPaths } from './config.js';
 import { AutomationEngine, type RunConfig, type SceneStatus, type EngineState } from './engine.js';
 import { readScenes, readCharacters, type SceneData, type CharacterData } from './excel-reader.js';
 import { createFlowPage } from './browser.js';
+import { copyPhotos, findPhoto, removePhoto, savePhoto, type SavedPhoto } from './flow-photos.js';
 import { addLogListener, removeLogListener, type LogListener, log } from './logger.js';
 
 // ─── Types ───────────────────────────────────────────────────
@@ -144,6 +145,8 @@ export class FlowManager {
     mkdirSync(paths.flowDir, { recursive: true });
     mkdirSync(paths.outputDir, { recursive: true });
 
+    copyPhotos(sourcePaths.photosDir, paths.photosDir);
+
     // Copy Excel if exists
     let hasExcel = false;
     let sceneCount = 0;
@@ -215,10 +218,62 @@ export class FlowManager {
     }));
   }
 
-  async getCharacters(id: string): Promise<CharacterData[]> {
+  /** Nhân vật trong Excel + trạng thái ảnh tham chiếu (upload qua UI > đường dẫn ở cột 9 > chưa có). */
+  async getCharacters(id: string): Promise<(CharacterData & { photoSource: 'upload' | 'excel' | 'missing' | null; photoUrl: string | null; excelPhotoPath: string })[]> {
     const paths = getFlowPaths(id);
     if (!existsSync(paths.excelPath)) return [];
-    return readCharacters(paths.excelPath);
+    const chars = await readCharacters(paths.excelPath);
+    return chars.map((c) => {
+      const up = findPhoto(paths.photosDir, c.id);
+      return {
+        ...c,
+        excelPhotoPath: c.photoPath,
+        photoPath: up ? up.path : c.photoPath,
+        photoSource: up ? 'upload' : c.photoPath ? (this.excelPhotoExists(c.photoPath, paths.excelPath) ? 'excel' : 'missing') : null,
+        photoUrl: up ? `/api/flows/${id}/photos/${encodeURIComponent(c.id)}?v=${Math.round(up.mtimeMs)}` : null,
+      };
+    });
+  }
+
+  /** Cùng quy tắc tìm tệp với resolvePhotos(): tương đối theo thư mục chạy hoặc theo thư mục Excel. */
+  private excelPhotoExists(p: string, excelPath: string): boolean {
+    const tried = isAbsolute(p) ? [p] : [resolve(p), resolve(dirname(excelPath), p)];
+    return tried.some((t) => existsSync(t));
+  }
+
+  private async requireCharacter(id: string, charId: string): Promise<void> {
+    const session = this.flows.get(id);
+    if (!session) throw new Error(`Flow ${id} not found`);
+    if (session.engine?.getState() === 'running') throw new Error('Flow đang chạy, dừng lại rồi mới đổi ảnh.');
+    const chars = await this.getCharacters(id);
+    if (!chars.some((c) => c.id === charId)) throw new Error(`Không có nhân vật id "${charId}" trong Excel của flow này`);
+  }
+
+  async uploadPhoto(id: string, charId: string, buf: Buffer): Promise<SavedPhoto> {
+    await this.requireCharacter(id, charId);
+    const saved = await savePhoto(getFlowPaths(id).photosDir, charId, buf);
+    this.touch(id);
+    log.success(`Ảnh nhân vật ${charId} đã upload cho flow ${id} (${saved.width}x${saved.height})`);
+    return saved;
+  }
+
+  async deletePhoto(id: string, charId: string): Promise<boolean> {
+    await this.requireCharacter(id, charId);
+    const removed = removePhoto(getFlowPaths(id).photosDir, charId);
+    if (removed) this.touch(id);
+    return removed;
+  }
+
+  getPhotoFile(id: string, charId: string) {
+    if (!this.flows.has(id)) return undefined;
+    return findPhoto(getFlowPaths(id).photosDir, charId);
+  }
+
+  private touch(id: string): void {
+    const s = this.flows.get(id);
+    if (!s) return;
+    s.meta.updatedAt = new Date().toISOString();
+    this.saveMeta(id, s.meta);
   }
 
   updateScenePrompt(id: string, sceneId: string, update: { imagePrompt?: string; videoPrompt?: string }): void {
@@ -267,6 +322,7 @@ export class FlowManager {
       flowId: id,
       excelPath: paths.excelPath,
       outputDir: paths.outputDir,
+      photosDir: paths.photosDir,
       progressFile: paths.progressFile,
       page,
       createPage: () => createFlowPage(),

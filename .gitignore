@@ -13,3 +13,6 @@ wedding-video/photos/*
 
 # trang Flow đã lưu: chứa token/email tài khoản, KHÔNG commit
 page.html
+
+# Ảnh thật cô dâu/chú rể upload qua web UI (dữ liệu cá nhân)
+flows/*/photos/

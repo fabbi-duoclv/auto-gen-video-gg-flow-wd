@@ -6,6 +6,7 @@ import archiver from 'archiver';
 import { getFlowPaths } from '../config.js';
 import { FlowManager } from '../flow-manager.js';
 import { openLoginBrowser, type RunConfig } from '../engine.js';
+import { MAX_PHOTO_BYTES, PhotoError } from '../flow-photos.js';
 
 // ─── Helpers ─────────────────────────────────────────────────
 
@@ -78,6 +79,66 @@ export function handleCloneFlow(fm: FlowManager) {
     } catch (err) {
       json(res, { error: (err as Error).message }, 400);
     }
+  };
+}
+
+// ─── Character photos (ảnh cô dâu / chú rể) ─────────────────
+
+/** Đọc body nhưng dừng ngay khi vượt giới hạn, tránh nuốt RAM bởi tệp quá lớn. */
+function collectLimited(req: IncomingMessage, limit: number): Promise<Buffer | 'too-large'> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    let over = false;
+    req.on('data', (chunk) => {
+      if (over) return;
+      size += chunk.length;
+      if (size > limit) { over = true; chunks.length = 0; return; }
+      chunks.push(Buffer.from(chunk));
+    });
+    req.on('end', () => resolve(over ? 'too-large' : Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
+export function handleFlowPhotoUpload(fm: FlowManager) {
+  return async (req: IncomingMessage, res: ServerResponse, flowId: string, charId: string) => {
+    try {
+      const body = await collectLimited(req, MAX_PHOTO_BYTES + 1024);
+      if (body === 'too-large') {
+        json(res, { error: `Ảnh quá lớn. Tối đa ${MAX_PHOTO_BYTES / 1048576} MB.` }, 413);
+        return;
+      }
+      const saved = await fm.uploadPhoto(flowId, charId, body);
+      json(res, { ok: true, ...saved });
+    } catch (err) {
+      json(res, { error: (err as Error).message }, err instanceof PhotoError ? 400 : 409);
+    }
+  };
+}
+
+export function handleFlowPhotoDelete(fm: FlowManager) {
+  return async (_req: IncomingMessage, res: ServerResponse, flowId: string, charId: string) => {
+    try {
+      json(res, { ok: true, removed: await fm.deletePhoto(flowId, charId) });
+    } catch (err) {
+      json(res, { error: (err as Error).message }, 409);
+    }
+  };
+}
+
+export function handleFlowPhotoGet(fm: FlowManager) {
+  return (_req: IncomingMessage, res: ServerResponse, flowId: string, charId: string) => {
+    const p = fm.getPhotoFile(flowId, charId);
+    if (!p) { res.writeHead(404); res.end('No photo'); return; }
+    const mime = { jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp' }[p.ext];
+    res.writeHead(200, {
+      'Content-Type': mime,
+      'Content-Length': statSync(p.path).size,
+      'Cache-Control': 'private, max-age=3600',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    createReadStream(p.path).pipe(res);
   };
 }
 

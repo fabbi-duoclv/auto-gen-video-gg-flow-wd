@@ -15,6 +15,7 @@ import {
   updateSceneProgress,
 } from './progress-tracker.js';
 import { prepareRefs, getRefIndicesForScene } from './ref-generator.js';
+import { withUploadedPhotos } from './flow-photos.js';
 import { log as globalLog, createFlowLogger, type FlowLogger } from './logger.js';
 import type { Page } from 'playwright';
 
@@ -46,6 +47,8 @@ export interface FlowConfig {
   flowId: string;
   excelPath: string;
   outputDir: string;
+  /** Thư mục ảnh cô dâu/chú rể upload qua web UI (ưu tiên hơn cột 9 của Excel). */
+  photosDir?: string;
   progressFile: string;
   page: Page;
   createPage?: () => Promise<Page>;
@@ -197,7 +200,7 @@ export class AutomationEngine extends EventEmitter {
     this.log.info(`Project: ${projectUrl}`);
 
     // Step 0: Generate reference images for all characters
-    const characters = await readCharacters(this.excelPath);
+    const characters = withUploadedPhotos(await readCharacters(this.excelPath), this.flowConfig?.photosDir);
     if (this.isAborted()) { this.log.warn('Run aborted'); return; }
     const { refMap, totalRefs } = await prepareRefs(flowPage, characters, this.excelPath ?? CONFIG.EXCEL_PATH);
 

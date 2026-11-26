@@ -217,3 +217,11 @@ npm run test:upload -- ./wedding-video/excel/ngu-kiep.xlsx   # upload + gắn th
 ```
 
 Biến môi trường (`.env`, tùy chọn): `REF_HASH_STRONG_DIST` (mặc định 8), `REF_HASH_MAX_DIST` (20), `REF_HASH_MIN_MARGIN` (6), `REF_MATCH_MODE=position` (quay về cách gắn theo vị trí cũ).
+
+### Upload ảnh trên Web UI
+
+`npm run serve` → mở Flow → tab **Characters**: mỗi nhân vật có ô ảnh (bấm để chọn, hoặc kéo-thả; JPG/PNG/WebP, tối đa 15 MB).
+- Ảnh upload lưu ở `flows/<id>/photos/char-<id>.<đuôi>` (đã `.gitignore`), **ưu tiên hơn** đường dẫn ở cột 9 của sheet Characters. Clone Flow thì ảnh được sao chép theo.
+- Trạng thái mỗi người: `Uploaded` / `From Excel path` / `Excel path not found` / `No photo`. Thanh tóm tắt hiện `📷 x/y photos`.
+- Bấm Start khi Excel trỏ tới tệp không tồn tại ⇒ chặn và báo; khi có người không có ảnh lẫn headshot prompt ⇒ hỏi xác nhận.
+- API: `POST|GET|DELETE /api/flows/:id/photos/:charId` (POST gửi nguyên byte ảnh làm body). Không đổi được ảnh khi Flow đang chạy.

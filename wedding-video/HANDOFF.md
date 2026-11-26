@@ -51,7 +51,9 @@ python3 prompt-source/build_excel.py excel
 
 **Vì sao nhận diện theo nội dung, không theo vị trí:** `attachReferences()` gốc chọn ảnh bằng `count - totalRefs + idx`. Với danh sách mới nhất ở đầu, công thức này có vẻ trỏ ngược thứ tự (nhân vật 0 thành nhân vật cuối), tức có thể gắn nhầm mặt khi có từ hai nhân vật. Chưa kiểm trên Flow thật. Bản mới so ảnh gốc với thumbnail, và **dừng** khi không chắc chắn thay vì gắn bừa.
 
-**Cách dùng:**
+**Cách dùng (Web UI):** `npm run serve` → mở Flow → tab *Characters* → bấm hoặc kéo-thả ảnh vào ô của từng người (xem README mục "Upload ảnh trên Web UI"). Ảnh upload ưu tiên hơn cột 9 của Excel.
+
+**Cách dùng (CLI / Excel):**
 1. Bỏ `co-dau.jpg`, `chu-re.jpg` vào `wedding-video/photos/` (cột 9 của sheet `Characters` đã khai sẵn).
 2. `npm run inspect:upload -- --file ./wedding-video/photos/co-dau.jpg`: xem nút tải lên nào chạy được, ảnh chụp và HTML popup lưu ở `output/debug/`.
 3. `npm run test:upload -- ./wedding-video/excel/ngu-kiep.xlsx`: upload, in bảng khoảng cách ảnh gốc với mọi mục popup, gắn thử từng ảnh.
