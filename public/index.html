@@ -473,6 +473,13 @@ async function createFlow() {
       '<button class="btn-primary" id="dialogOk">Tạo</button>' +
     '</div>'
   );
+  const nameInput = document.getElementById('dialogInput');
+  nameInput.focus();
+  // Gắn vào từng input của dialog này (dialogBox được dùng lại cho dialog khác nên không gắn vào nó).
+  document.querySelectorAll('#dialogBox input').forEach(el => el.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); document.getElementById('dialogOk').click(); }
+    if (e.key === 'Escape') closeDialog();
+  }));
   document.getElementById('dialogOk').onclick = async () => {
     const template = (document.querySelector('input[name=tpl]:checked') || {}).value;
     const name = document.getElementById('dialogInput').value.trim();
@@ -564,7 +571,6 @@ async function renderFlowView() {
       </div>
       <div class="settings">
         <label class="field">Ratio <select id="ratio"><option value="16:9">16:9</option><option value="9:16" selected>9:16</option><option value="1:1">1:1</option></select></label>
-        <label class="field">Outputs <select id="genCount"><option value="1" selected>1 per scene</option><option value="2">2 per scene</option></select></label>
         <label class="toggle"><input type="checkbox" id="imageOnly"><span>Images only</span></label>
         <label class="toggle"><input type="checkbox" id="videoOnly"><span>Videos only</span></label>
         <label class="toggle"><input type="checkbox" id="resume"><span>Resume</span></label>
@@ -877,7 +883,7 @@ async function doStart() {
   if (noFace.length && !confirm('No reference photo for: ' + noFace.join(', ') + '.\nTheir faces will NOT be locked and will differ between scenes.\n\nStart anyway?')) return;
   const btn = document.getElementById('btnStart');
   await withLoading(btn, async () => {
-    const res = await fetch(apiUrl('start'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scenes: sel, imageOnly: document.getElementById('imageOnly').checked, videoOnly: document.getElementById('videoOnly').checked, resume: document.getElementById('resume').checked, ratio: document.getElementById('ratio').value, genCount: parseInt(document.getElementById('genCount').value) }) });
+    const res = await fetch(apiUrl('start'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scenes: sel, imageOnly: document.getElementById('imageOnly').checked, videoOnly: document.getElementById('videoOnly').checked, resume: document.getElementById('resume').checked, ratio: document.getElementById('ratio').value }) });
     if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Failed to start'); }
     showToast('Flow started!', 'success');
   }, false);

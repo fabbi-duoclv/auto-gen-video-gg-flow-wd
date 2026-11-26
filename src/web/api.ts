@@ -12,6 +12,9 @@ import { isMerging, type MergeResult } from '../merge.js';
 
 // ─── Helpers ─────────────────────────────────────────────────
 
+const RATIOS = ['16:9', '9:16', '1:1'] as const;
+type Ratio = (typeof RATIOS)[number];
+
 function json(res: ServerResponse, data: unknown, status = 200): void {
   res.writeHead(status, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(data));
@@ -244,13 +247,23 @@ export function handleFlowStart(fm: FlowManager) {
       }
       const body = await parseBody(req);
       // startFlow kiểm tra lại isMerging đồng bộ, phòng trường hợp ghép bắt đầu trong lúc đọc body.
+      const ratio = body.ratio ?? '9:16';
+      if (!RATIOS.includes(ratio as Ratio)) {
+        json(res, { error: `Tỉ lệ khung không hợp lệ: ${String(ratio)} (chỉ nhận ${RATIOS.join(', ')})` }, 400);
+        return;
+      }
+      if (body.scenes !== undefined && !(Array.isArray(body.scenes) && body.scenes.every((s) => typeof s === 'string'))) {
+        json(res, { error: 'Danh sách cảnh không hợp lệ' }, 400);
+        return;
+      }
       const config: RunConfig = {
         scenes: body.scenes as string[] | undefined,
-        imageOnly: body.imageOnly as boolean | undefined,
-        videoOnly: body.videoOnly as boolean | undefined,
-        resume: body.resume as boolean | undefined,
-        ratio: (body.ratio as '16:9' | '9:16' | '1:1') || '16:9',
-        genCount: (body.genCount as number) || 1,
+        imageOnly: body.imageOnly === true,
+        videoOnly: body.videoOnly === true,
+        resume: body.resume === true,
+        ratio: ratio as Ratio,
+        // Mỗi cảnh chỉ tải về 1 kết quả, nên luôn gen 1 (gen 2 chỉ tốn thêm credit).
+        genCount: 1,
       };
       await fm.startFlow(flowId, config);
       json(res, { ok: true }, 202);
@@ -312,33 +325,69 @@ export function handleFlowOutputList(fm: FlowManager) {
 }
 
 export function handleFlowOutputFile(fm: FlowManager) {
-  return (_req: IncomingMessage, res: ServerResponse, flowId: string, filename: string) => {
+  return (req: IncomingMessage, res: ServerResponse, flowId: string, filename: string) => {
     const meta = fm.getFlowMeta(flowId);
     if (!meta) { res.writeHead(404); res.end('Flow not found'); return; }
 
     const paths = getFlowPaths(flowId);
     const filePath = join(paths.outputDir, basename(filename));
+    let size: number;
     try {
       const stat = statSync(filePath);
-      const ext = extname(filename).toLowerCase();
-      const mimeTypes: Record<string, string> = {
-        '.png': 'image/png',
-        '.jpg': 'image/jpeg',
-        '.jpeg': 'image/jpeg',
-        '.mp4': 'video/mp4',
-        '.webm': 'video/webm',
-      };
-      res.writeHead(200, {
-        'Content-Type': mimeTypes[ext] || 'application/octet-stream',
-        'Content-Length': stat.size,
-        // final.mp4 bị ghi đè mỗi lần ghép lại: bắt trình duyệt tải bản mới
-        'Cache-Control': 'no-cache',
-      });
-      createReadStream(filePath).pipe(res);
+      if (!stat.isFile()) throw new Error('not a file');
+      size = stat.size;
     } catch {
       res.writeHead(404);
       res.end('File not found');
+      return;
     }
+
+    const ext = extname(filename).toLowerCase();
+    const mimeTypes: Record<string, string> = {
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.mp4': 'video/mp4',
+      '.webm': 'video/webm',
+    };
+    const headers: Record<string, string | number> = {
+      'Content-Type': mimeTypes[ext] || 'application/octet-stream',
+      'Accept-Ranges': 'bytes',
+      // final.mp4 bị ghi đè mỗi lần ghép lại: bắt trình duyệt tải bản mới
+      'Cache-Control': 'no-cache',
+    };
+
+    // Range: để trình duyệt tua được video (Safari/iOS bắt buộc phải có).
+    const range = req.headers.range;
+    let start = 0;
+    let end = size - 1;
+    let status = 200;
+    if (range) {
+      const m = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
+      if (m && (m[1] || m[2])) {
+        if (m[1]) {
+          start = Number(m[1]);
+          end = m[2] ? Math.min(Number(m[2]), size - 1) : size - 1;
+        } else {
+          start = Math.max(size - Number(m[2]), 0); // "bytes=-N": N byte cuối
+        }
+      }
+      if (!m || (!m[1] && !m[2]) || start > end || start >= size) {
+        res.writeHead(416, { 'Content-Range': `bytes */${size}` });
+        res.end();
+        return;
+      }
+      status = 206;
+      headers['Content-Range'] = `bytes ${start}-${end}/${size}`;
+    }
+    headers['Content-Length'] = size === 0 ? 0 : end - start + 1;
+    res.writeHead(status, headers);
+    if (req.method === 'HEAD' || size === 0) { res.end(); return; }
+
+    const stream = createReadStream(filePath, { start, end });
+    stream.on('error', () => res.destroy());
+    res.on('close', () => stream.destroy()); // người xem đóng/tua: nhả handle file ngay
+    stream.pipe(res);
   };
 }
 

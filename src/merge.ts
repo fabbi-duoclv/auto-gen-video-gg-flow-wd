@@ -38,10 +38,17 @@ export function isMerging(outputDir: string): boolean {
 
 /** "... · dùng 1,7 s · ..." → 1.7. Không có thì dùng mặc định. */
 export function keepSeconds(sceneName: string): number {
-  const m = sceneName.match(/dùng\s*(\d+(?:[.,]\d+)?)\s*s/i);
+  // NFC: tên cảnh gõ kiểu tổ hợp (u + dấu móc tách rời) vẫn khớp "dùng".
+  const m = sceneName.normalize('NFC').match(/dùng\s*(\d+(?:[.,]\d+)?)\s*s/i);
   if (!m) return DEFAULT_KEEP_SEC;
   const v = parseFloat(m[1].replace(',', '.'));
   return v > 0 ? v : DEFAULT_KEEP_SEC;
+}
+
+async function probeDuration(file: string): Promise<number> {
+  const { stdout } = await run(FFPROBE, ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file]);
+  const d = parseFloat(stdout.trim());
+  return Number.isFinite(d) ? d : 0;
 }
 
 async function probeSize(file: string): Promise<{ w: number; h: number }> {
@@ -141,10 +148,8 @@ export async function mergeClips(
 
     const args: string[] = ['-y', '-v', 'error'];
     const filters: string[] = [];
-    let total = 0;
     picked.forEach((c, i) => {
       const keep = keepSeconds(c.scene.sceneName);
-      total += keep;
       args.push('-i', join(outputDir, c.file));
       filters.push(
         `[${i}:v]trim=duration=${keep},setpts=PTS-STARTPTS,` +
@@ -171,9 +176,12 @@ export async function mergeClips(
       throw new Error(`ffmpeg lỗi: ${(err.stderr || err.message).slice(0, 500)}`);
     }
     // Chỉ thay final.mp4 khi đã ghép xong, để không ai tải phải file dở.
-    await replaceFinal(tmpPath, join(outputDir, FINAL_NAME));
+    const finalPath = join(outputDir, FINAL_NAME);
+    await replaceFinal(tmpPath, finalPath);
 
-    return { file: FINAL_NAME, clips: picked.length, seconds: Math.round(total * 10) / 10, skipped, missing };
+    // Độ dài thật của file (clip ngắn hơn "dùng X s" thì không bị độn thêm).
+    const seconds = await probeDuration(finalPath).catch(() => 0);
+    return { file: FINAL_NAME, clips: picked.length, seconds: Math.round(seconds * 10) / 10, skipped, missing };
   } finally {
     merging.delete(outputDir);
   }

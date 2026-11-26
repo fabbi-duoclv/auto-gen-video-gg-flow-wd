@@ -362,6 +362,13 @@ export class FlowManager {
     paths: FlowPaths,
     config: RunConfig,
   ): Promise<void> {
+    // Tab của lần chạy trước (nếu còn) không dùng lại: đóng để không dồn tab/RAM.
+    if (session.page) {
+      const old = session.page;
+      session.page = null;
+      await old.close().catch(() => {});
+    }
+
     // Create a new browser tab for this flow
     const page = await createFlowPage();
     session.page = page;
@@ -427,6 +434,11 @@ export class FlowManager {
       if (session.logListener) {
         removeLogListener(session.logListener);
         session.logListener = null;
+      }
+      // Chạy xong thì đóng tab Flow của lần này (tab phụ của worker engine đã tự đóng).
+      if (session.page === page) {
+        session.page = null;
+        page.close().catch(() => {});
       }
     });
   }
